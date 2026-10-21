@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>clouDBills &middot; Inventory</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body data-page="resources">
+  <header id="app-header"></header>
+
+  <main>
+    <div class="page-head">
+      <div>
+        <h1>Resource inventory</h1>
+        <p>Create, update and soft-delete cloud resources. Tags are stored as atomic rows and every write goes through a stored program.</p>
+      </div>
+      <div class="page-actions">
+        <button class="btn" id="refresh-resources">Refresh</button>
+        <button class="btn btn-primary" id="add-resource">Add resource</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="toolbar">
+        <input type="search" id="resource-search" placeholder="Search name or external id">
+        <select id="filter-status">
+          <option value="">All statuses</option>
+          <option value="active">Active</option>
+          <option value="stopped">Stopped</option>
+          <option value="deleted">Deleted</option>
+          <option value="unknown">Unknown</option>
+        </select>
+        <select id="filter-category">
+          <option value="">All categories</option>
+          <option value="compute">Compute</option>
+          <option value="storage">Storage</option>
+          <option value="network">Network</option>
+          <option value="database">Database</option>
+        </select>
+        <select id="filter-project"><option value="">All projects</option></select>
+        <div class="spacer"></div>
+        <span class="muted small" id="resource-count"></span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th><th>Resource</th><th>Provider / account</th><th>Project</th>
+              <th>Type</th><th>Region</th><th>Status</th><th class="num">Hourly</th>
+              <th>Tags</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="resources-body">
+            <tr><td colspan="10" class="empty">Loading inventory ...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <h2>Waste detectors</h2>
+          <p>Read-only functions that evaluate the inventory and telemetry without writing to the database.</p>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="rerun-detectors">Re-run detectors</button>
+      </div>
+      <div class="grid grid-3">
+        <div class="card">
+          <div class="card-pad"><h3>Idle compute</h3><p class="muted small">Average CPU below the rule threshold for 21 days.</p></div>
+          <div class="table-wrap"><table><tbody id="detect-idle"><tr><td class="empty">Running ...</td></tr></tbody></table></div>
+        </div>
+        <div class="card">
+          <div class="card-pad"><h3>Orphaned volumes</h3><p class="muted small">Storage resources without an active parent attachment.</p></div>
+          <div class="table-wrap"><table><tbody id="detect-orphaned"><tr><td class="empty">Running ...</td></tr></tbody></table></div>
+        </div>
+        <div class="card">
+          <div class="card-pad"><h3>Missing tags</h3><p class="muted small">Active resources missing owner, project or environment tags.</p></div>
+          <div class="table-wrap"><table><tbody id="detect-tags"><tr><td class="empty">Running ...</td></tr></tbody></table></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="modal-backdrop hidden" id="resource-modal">
+    <div class="modal">
+      <div class="modal-head">
+        <h2 id="resource-modal-title">Add resource</h2>
+        <button class="icon-btn" data-close type="button">&times;</button>
+      </div>
+      <form id="resource-form">
+        <div class="modal-body">
+          <input type="hidden" id="resource-id">
+          <div class="form-grid">
+            <div class="field">
+              <label for="resource-name">Resource name</label>
+              <input id="resource-name" required maxlength="255">
+            </div>
+            <div class="field">
+              <label for="resource-external">External resource id</label>
+              <input id="resource-external" required maxlength="255">
+            </div>
+            <div class="field">
+              <label for="resource-account">Cloud account</label>
+              <select id="resource-account" required></select>
+            </div>
+            <div class="field">
+              <label for="resource-project">Project</label>
+              <select id="resource-project"></select>
+            </div>
+            <div class="field">
+              <label for="resource-type">Resource type</label>
+              <select id="resource-type" required></select>
+            </div>
+            <div class="field">
+              <label for="resource-region">Region</label>
+              <select id="resource-region" required></select>
+            </div>
+            <div class="field">
+              <label for="resource-status">Status</label>
+              <select id="resource-status">
+                <option value="active">Active</option>
+                <option value="stopped">Stopped</option>
+                <option value="unknown">Unknown</option>
+                <option value="deleted">Deleted</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="resource-cost">Hourly cost (USD)</label>
+              <input id="resource-cost" type="number" step="0.0001" min="0" value="0">
+            </div>
+            <div class="field full">
+              <label for="resource-tags">Tags</label>
+              <textarea id="resource-tags" placeholder="owner=web-team&#10;environment=production&#10;cost-center=CC-1003"></textarea>
+              <div class="form-hint">One key=value pair per line. Saving replaces the resource tag set.</div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn" type="button" data-close>Cancel</button>
+          <button class="btn btn-primary" type="submit" id="resource-save">Save resource</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-backdrop hidden" id="detail-modal">
+    <div class="modal wide">
+      <div class="modal-head">
+        <h2>Resource detail</h2>
+        <button class="icon-btn" data-close type="button">&times;</button>
+      </div>
+      <div class="modal-body" id="detail-body">Loading ...</div>
+      <div class="modal-foot"><button class="btn" data-close type="button">Close</button></div>
+    </div>
+  </div>
+
+  <script src="/js/layout.js" defer></script>
+  <script src="/js/api.js" defer></script>
+  <script src="/js/resources.js" defer></script>
+</body>
+</html>

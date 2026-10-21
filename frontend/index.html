@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>clouDBills &middot; FinOps control room</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body data-page="dashboard">
+  <header id="app-header"></header>
+
+  <main>
+    <div class="page-head">
+      <div>
+        <h1>FinOps control room</h1>
+        <p>Cloud spend, waste detections and the approval queue, all computed inside PostgreSQL stored programs.</p>
+      </div>
+      <div class="page-actions">
+        <a class="btn" href="/pages/recommendations.html">Open approval queue</a>
+        <a class="btn btn-primary" href="/pages/billing.html">Upload billing CSV</a>
+      </div>
+    </div>
+
+    <section class="grid grid-kpi" id="kpis"></section>
+
+    <section class="grid grid-2 section">
+      <div class="card">
+        <div class="card-pad section-head" style="margin-bottom:0">
+          <div>
+            <h2>Spend by month</h2>
+            <p>Aggregated from the partitioned billing fact table.</p>
+          </div>
+        </div>
+        <div id="spend-chart" class="bars"></div>
+      </div>
+      <div class="card">
+        <div class="card-pad section-head" style="margin-bottom:0">
+          <div>
+            <h2>Top projects this month</h2>
+            <p>Point-in-time project attribution from billing records.</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Project</th><th>Team</th><th class="num">Spend</th><th style="width:32%">Share</th></tr></thead>
+            <tbody id="top-projects"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid grid-2 section">
+      <div class="card">
+        <div class="card-pad section-head" style="margin-bottom:0">
+          <div>
+            <h2>Recent recommendations</h2>
+            <p>Latest findings from rule-based waste detection.</p>
+          </div>
+          <a class="btn btn-ghost btn-sm" href="/pages/recommendations.html">View all</a>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Resource</th><th>Project</th><th class="num">Est. saving</th><th>Status</th></tr></thead>
+            <tbody id="recent-recommendations"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-pad section-head" style="margin-bottom:0">
+          <div>
+            <h2>Budget alerts</h2>
+            <p>Rows inserted automatically when spend crosses the warning line.</p>
+          </div>
+          <a class="btn btn-ghost btn-sm" href="/pages/budgets.html">Manage budgets</a>
+        </div>
+        <div class="list" id="budget-alerts"></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <h2>Live waste detectors</h2>
+          <p>Functions evaluated on demand: idle compute, orphaned storage and missing FinOps tags.</p>
+        </div>
+        <a class="btn btn-ghost btn-sm" href="/pages/resources.html">Inspect inventory</a>
+      </div>
+      <div class="grid grid-3" id="detections"></div>
+    </section>
+
+    <div id="dashboard-error"></div>
+  </main>
+
+  <script src="/js/layout.js" defer></script>
+  <script src="/js/api.js" defer></script>
+  <script src="/js/dashboard.js" defer></script>
+</body>
+</html>

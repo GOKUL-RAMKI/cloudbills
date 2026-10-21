@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>clouDBills &middot; Audit</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body data-page="audit">
+  <header id="app-header"></header>
+
+  <main>
+    <div class="page-head">
+      <div>
+        <h1>Audit trail</h1>
+        <p>Trigger-written, append-only history of resource changes, recommendation decisions, budget edits and remediation actions.</p>
+      </div>
+      <div class="page-actions">
+        <button class="btn" id="refresh-audit">Refresh</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="toolbar">
+        <input type="search" id="audit-search" placeholder="Filter by action, entity or user" style="min-width:280px">
+        <div class="spacer"></div>
+        <span class="muted small" id="audit-count"></span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Timestamp</th><th>Action</th><th>Entity</th><th>Actor</th>
+              <th>Previous state</th><th>New state</th><th>Client IP</th></tr>
+          </thead>
+          <tbody id="audit-body"><tr><td colspan="7" class="empty">Loading audit entries ...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <script src="/js/layout.js" defer></script>
+  <script src="/js/api.js" defer></script>
+  <script src="/js/audit.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>clouDBills &middot; Budgets</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body data-page="budgets">
+  <header id="app-header"></header>
+
+  <main>
+    <div class="page-head">
+      <div>
+        <h1>Budgets and alerts</h1>
+        <p>Monthly project or team budgets, live spend utilisation, and alerts raised by the billing trigger when a warning line is crossed.</p>
+      </div>
+      <div class="page-actions">
+        <button class="btn" id="refresh-budgets">Refresh</button>
+        <button class="btn btn-primary" id="add-budget">Add budget</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="toolbar">
+        <input type="month" id="budget-month-filter">
+        <button class="btn" id="apply-budget-filter">Apply</button>
+        <button class="btn btn-ghost" id="clear-budget-filter">Clear</button>
+        <div class="spacer"></div>
+        <span class="muted small" id="budget-count"></span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Scope</th><th>Month</th><th class="num">Budget</th><th class="num">Spend</th>
+              <th style="width:22%">Utilisation</th><th>Status</th><th>Actions</th></tr>
+          </thead>
+          <tbody id="budgets-body"><tr><td colspan="7" class="empty">Loading budgets ...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <section class="card section">
+      <div class="card-pad section-head" style="margin-bottom:0">
+        <div>
+          <h2>Budget alerts</h2>
+          <p>Trigger-generated notifications. Acknowledging an alert does not change the underlying spend.</p>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Scope</th><th>Month</th><th class="num">Spend</th><th class="num">Budget</th>
+            <th class="num">Utilisation</th><th>Triggered</th><th>State</th><th>Actions</th></tr></thead>
+          <tbody id="alerts-body"><tr><td colspan="8" class="empty">Loading alerts ...</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <div class="modal-backdrop hidden" id="budget-modal">
+    <div class="modal">
+      <div class="modal-head">
+        <h2 id="budget-modal-title">Add budget</h2>
+        <button class="icon-btn" data-close type="button">&times;</button>
+      </div>
+      <form id="budget-form">
+        <div class="modal-body">
+          <input type="hidden" id="budget-id">
+          <div class="form-grid">
+            <div class="field">
+              <label for="budget-scope">Scope</label>
+              <select id="budget-scope">
+                <option value="project">Project</option>
+                <option value="team">Team</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="budget-month">Budget month</label>
+              <input id="budget-month" type="month" required>
+            </div>
+            <div class="field" id="budget-project-field">
+              <label for="budget-project">Project</label>
+              <select id="budget-project"></select>
+            </div>
+            <div class="field hidden" id="budget-team-field" style="display:none">
+              <label for="budget-team">Team</label>
+              <select id="budget-team"></select>
+            </div>
+            <div class="field">
+              <label for="budget-amount">Budget amount (USD)</label>
+              <input id="budget-amount" type="number" step="0.01" min="0.01" required>
+            </div>
+            <div class="field">
+              <label for="budget-warning">Warning percentage</label>
+              <input id="budget-warning" type="number" step="1" min="1" max="100" value="80" required>
+            </div>
+          </div>
+          <div class="notice" style="margin-top:14px">Creating or updating a budget immediately evaluates current spend and may insert an alert.</div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn" type="button" data-close>Cancel</button>
+          <button class="btn btn-primary" type="submit" id="budget-save">Save budget</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/js/layout.js" defer></script>
+  <script src="/js/api.js" defer></script>
+  <script src="/js/budgets.js" defer></script>
+</body>
+</html>
