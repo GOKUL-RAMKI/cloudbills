@@ -1,0 +1,5 @@
+.agents/
+.claude/
+node_modules/
+skills-lock/
+.env

@@ -1,0 +1,362 @@
+erDiagram
+    %% clouDBills Full Overview - NO ATTRIBUTES (relationships only)
+    %% 33 entities - paste into https://mermaid.live to preview
+
+    CLOUD_PROVIDERS ||--o{ CLOUD_ACCOUNTS : offers
+    CLOUD_PROVIDERS ||--o{ REGIONS : operates_in
+    CLOUD_PROVIDERS ||--o{ RESOURCE_TYPES : defines
+    CLOUD_ACCOUNTS ||--o{ RESOURCES : provisions
+    CLOUD_ACCOUNTS ||--o{ BILLING_IMPORT_BATCHES : ingests
+    CLOUD_ACCOUNTS ||--o{ BILLING_RECORDS : bills
+    USERS ||--o{ TEAMS : manages
+    USERS ||--o{ USER_ROLES : assigned
+    ROLES ||--o{ USER_ROLES : grants
+    TEAMS ||--o{ PROJECTS : owns
+    TEAMS |o--o{ BUDGETS : funds
+    ENVIRONMENTS ||--o{ PROJECTS : stages
+    PROJECTS ||--o{ RESOURCES : groups
+    PROJECTS ||--o{ BUDGETS : caps
+    PROJECTS ||--o{ RESOURCE_CONSUMERS : consumes
+    PROJECTS ||--o{ ALLOCATED_COSTS : charged_to
+    PROJECTS |o--o{ BILLING_RECORDS : attributed_to
+    PROJECTS ||--o{ RECOMMENDATIONS : impacts
+    RESOURCE_TYPES ||--o{ RESOURCES : classifies
+    REGIONS ||--o{ RESOURCES : hosts
+    RESOURCES ||--o{ RESOURCE_TAGS : tagged_as
+    RESOURCES ||--o{ RESOURCE_DEPENDENCIES : linked
+    RESOURCES ||--o{ RESOURCE_CONSUMERS : shared_via
+    RESOURCES ||--o{ RESOURCE_STATUS_HISTORY : transitions
+    RESOURCES ||--o{ ALLOCATED_COSTS : splits_cost
+    RESOURCES |o--o{ BILLING_RECORDS : charged_for
+    RESOURCES ||--o{ USAGE_METRICS : emits
+    RESOURCES ||--o{ RESOURCE_DAILY_SUMMARIES : rolls_up
+    RESOURCES ||--o{ RECOMMENDATIONS : targets
+    USERS ||--o{ BILLING_IMPORT_BATCHES : imports
+    BILLING_IMPORT_BATCHES ||--o{ BILLING_STAGING : lands
+    BILLING_IMPORT_BATCHES ||--o{ BILLING_IMPORT_ERRORS : quarantines
+    BILLING_IMPORT_BATCHES ||--o{ BILLING_RECORDS : produces
+    METRIC_TYPES ||--o{ USAGE_METRICS : measures
+    METRIC_TYPES ||--o{ RESOURCE_DAILY_SUMMARIES : aggregates
+    METRIC_TYPES |o--o{ RECOMMENDATION_EVIDENCE : observed
+    OPTIMIZATION_RULES ||--o{ RECOMMENDATIONS : triggers
+    RECOMMENDATIONS ||--o{ RECOMMENDATION_EVIDENCE : supported_by
+    RECOMMENDATIONS ||--o{ APPROVAL_REQUESTS : reviewed_via
+    RECOMMENDATIONS ||--o{ RECOMMENDATION_STATUS_HISTORY : audits_state
+    RECOMMENDATIONS ||--o{ RECOMMENDATION_ACTIONS : executes
+    RECOMMENDATIONS |o--|| SAVINGS_REALIZATION : validates
+    USERS ||--o{ APPROVAL_REQUESTS : requests
+    USERS |o--o{ APPROVAL_REQUESTS : reviews
+    USERS ||--o{ RECOMMENDATION_STATUS_HISTORY : changes
+    USERS ||--o{ RECOMMENDATION_ACTIONS : operates
+    USERS |o--o{ AUDIT_LOGS : performs
+    BUDGETS ||--o{ BUDGET_ALERTS : fires
+
+    CLOUD_PROVIDERS {
+        int provider_id PK
+        varchar provider_name UK
+        varchar api_endpoint_url
+        boolean is_active
+    }
+
+    CLOUD_ACCOUNTS {
+        bigint account_id PK
+        int provider_id FK
+        varchar account_name
+        varchar external_account_id
+        char currency_code
+        boolean is_active
+    }
+
+    USERS {
+        bigint user_id PK
+        varchar email UK
+        varchar username
+        varchar password_hash
+        varchar first_name
+        varchar last_name
+        boolean is_active
+        timestamp created_at
+    }
+
+    ROLES {
+        int role_id PK
+        varchar role_name UK
+        varchar description
+        jsonb permissions
+    }
+
+    USER_ROLES {
+        bigint user_id PK, FK
+        int role_id PK, FK
+        timestamp assigned_at
+    }
+
+    TEAMS {
+        bigint team_id PK
+        varchar team_name UK
+        varchar cost_center UK
+        bigint manager_user_id FK
+        timestamp created_at
+    }
+
+    PROJECTS {
+        bigint project_id PK
+        bigint team_id FK
+        int environment_id FK
+        varchar project_name
+        varchar description
+        boolean is_active
+        timestamp created_at
+    }
+
+    ENVIRONMENTS {
+        int environment_id PK
+        varchar environment_code UK
+        boolean is_production_grade
+    }
+
+    REGIONS {
+        int region_id PK
+        int provider_id FK
+        varchar region_code
+        varchar region_name
+        varchar continent
+        boolean is_active
+    }
+
+    RESOURCE_TYPES {
+        int type_id PK
+        int provider_id FK
+        varchar raw_service_code
+        varchar raw_type_name
+        varchar generic_category
+        varchar pricing_unit
+    }
+
+    RESOURCES {
+        bigint resource_id PK
+        bigint account_id FK
+        bigint project_id FK
+    }
+
+    BUDGETS {
+        bigint budget_id PK
+        bigint project_id FK
+        bigint team_id FK
+    }
+
+    RESOURCE_TAGS {
+        bigint resource_id PK, FK
+        varchar tag_key PK
+        varchar tag_value
+    }
+
+    RESOURCE_DEPENDENCIES {
+        bigint parent_resource_id PK, FK
+        bigint child_resource_id PK, FK
+        varchar dependency_type "attached_storage,elastic_ip,network_interface"
+        timestamp created_at
+    }
+
+    RESOURCE_CONSUMERS {
+        bigint resource_id PK, FK
+        bigint project_id PK, FK
+        decimal allocation_percentage "0-100"
+    }
+
+    RESOURCE_STATUS_HISTORY {
+        bigint status_history_id PK
+        bigint resource_id FK
+        varchar previous_status
+        varchar new_status
+        timestamp transition_time
+        varchar reason
+    }
+
+    ALLOCATED_COSTS {
+        bigint allocated_cost_id PK
+        bigint resource_id FK
+        bigint project_id FK
+        date allocation_month
+        decimal allocation_percentage
+        decimal allocated_amount
+    }
+
+    BILLING_IMPORT_BATCHES {
+        bigint batch_id PK
+        bigint account_id FK
+        bigint imported_by FK
+        varchar file_name
+        char file_checksum
+        timestamp imported_at
+        int row_count
+        int accepted_count
+        int rejected_count
+        varchar status "uploaded,validating,validated,processed,failed"
+    }
+
+    BILLING_STAGING {
+        bigint staging_id PK
+        bigint batch_id FK
+        text provider_name
+        text external_account_id
+        text external_resource_id
+        text service_name
+        text usage_start_text
+        text usage_end_text
+        text usage_quantity_text
+        text billed_cost_text
+        text currency_code_text
+    }
+
+    BILLING_IMPORT_ERRORS {
+        bigint error_id PK
+        bigint batch_id FK
+        int raw_row_index
+        jsonb raw_payload
+        varchar error_code
+        varchar error_message
+        timestamp rejected_at
+    }
+
+    BILLING_RECORDS {
+        bigint billing_id PK
+        timestamp usage_start PK "partition key"
+        bigint account_id FK
+        bigint resource_id FK "NULLABLE"
+        bigint project_id FK "NULLABLE"
+        bigint source_batch_id FK
+        varchar service_name
+        timestamp usage_end
+        decimal usage_quantity
+        decimal billed_cost
+        char currency_code
+    }
+
+    METRIC_TYPES {
+        int metric_type_id PK
+        varchar metric_name UK
+        varchar unit "percent,bytes,iops,count"
+        varchar aggregation_method "avg,max,sum"
+    }
+
+    USAGE_METRICS {
+        bigint metric_id PK
+        timestamp measured_at PK "partition key"
+        bigint resource_id FK
+        int metric_type_id FK
+        decimal metric_value
+    }
+
+    RESOURCE_DAILY_SUMMARIES {
+        bigint resource_id PK, FK
+        int metric_type_id PK, FK
+        date summary_date PK
+        decimal avg_value
+        decimal max_value
+        decimal min_value
+        int sample_count
+    }
+
+    OPTIMIZATION_RULES {
+        int rule_id PK
+        varchar rule_name UK
+        varchar rule_type "idle_compute,unattached_volume,missing_tag"
+        varchar description
+        varchar severity "low,medium,high,critical"
+        boolean is_active
+        jsonb parameters
+    }
+
+    RECOMMENDATIONS {
+        bigint recommendation_id PK
+        int rule_id FK
+        bigint resource_id FK
+        bigint project_id FK
+        varchar recommendation_type
+        varchar problem_description
+        varchar suggested_action
+        decimal estimated_monthly_saving
+        varchar risk_level
+        varchar status "detected,under_review,approved,rejected,deferred,executed,validated,closed"
+        timestamp detected_at
+        timestamp expires_at
+    }
+
+    RECOMMENDATION_EVIDENCE {
+        bigint evidence_id PK
+        bigint recommendation_id FK
+        int metric_type_id FK "NULLABLE"
+        timestamp observation_start
+        timestamp observation_end
+        decimal observed_value
+        decimal threshold_value
+        text narrative
+    }
+
+    APPROVAL_REQUESTS {
+        bigint approval_id PK
+        bigint recommendation_id FK
+        bigint requested_by FK
+        bigint reviewed_by FK "NULLABLE"
+        varchar decision "approved,rejected,deferred,NULL=pending"
+        varchar comments
+        timestamp requested_at
+        timestamp reviewed_at
+    }
+
+    RECOMMENDATION_STATUS_HISTORY {
+        bigint history_id PK
+        bigint recommendation_id FK
+        bigint changed_by FK
+        varchar old_status
+        varchar new_status
+        timestamp changed_at
+        varchar reason
+    }
+
+    RECOMMENDATION_ACTIONS {
+        bigint action_id PK
+        bigint recommendation_id FK
+        bigint executed_by FK
+        varchar action_type "stop,terminate,detach,delete"
+        varchar execution_status "in_progress,succeeded,failed"
+        timestamp started_at
+        timestamp completed_at
+        jsonb error_payload
+    }
+
+    SAVINGS_REALIZATION {
+        bigint realization_id PK
+        bigint recommendation_id FK
+        decimal baseline_monthly_cost
+        decimal actual_monthly_cost
+        decimal estimated_saving
+        decimal actual_saving
+        decimal realization_percentage
+        date measurement_start
+        date measurement_end
+        timestamp calculated_at
+    }
+
+    BUDGET_ALERTS {
+        bigint alert_id PK
+        bigint budget_id FK
+        timestamp triggered_at
+        decimal threshold_percentage_reached
+        decimal current_spend
+        decimal budget_amount
+        boolean is_acknowledged
+    }
+
+    AUDIT_LOGS {
+        bigint audit_id PK
+        bigint user_id FK "NULLABLE for system"
+        varchar action_type
+        varchar entity_type
+        bigint entity_id
+        jsonb old_state
+        jsonb new_state
+        timestamp action_timestamp
+        varchar client_ip
+    }

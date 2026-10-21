@@ -1,0 +1,72 @@
+erDiagram
+    %% Layer 2: Operational Inventory and Dependency Graph - clouDBills
+
+    CLOUD_ACCOUNTS ||--o{ RESOURCES : "provisions"
+    PROJECTS ||--o{ RESOURCES : "groups_nullable"
+    RESOURCE_TYPES ||--o{ RESOURCES : "classifies"
+    REGIONS ||--o{ RESOURCES : "hosts"
+    RESOURCES ||--o{ RESOURCE_TAGS : "tagged_as"
+    RESOURCES ||--o{ RESOURCE_DEPENDENCIES : "linked_as_parent_or_child"
+    RESOURCES ||--o{ RESOURCE_CONSUMERS : "shared_via"
+    PROJECTS ||--o{ RESOURCE_CONSUMERS : "consumes"
+    RESOURCES ||--o{ RESOURCE_STATUS_HISTORY : "transitions"
+    RESOURCES ||--o{ ALLOCATED_COSTS : "splits_cost"
+    PROJECTS ||--o{ ALLOCATED_COSTS : "charged_to"
+
+    CLOUD_ACCOUNTS {
+        bigint account_id PK
+    }
+    PROJECTS {
+        bigint project_id PK
+    }
+    RESOURCE_TYPES {
+        int type_id PK
+    }
+    REGIONS {
+        int region_id PK
+    }
+    RESOURCES {
+        bigint resource_id PK
+        bigint account_id FK
+        bigint project_id FK "NULLABLE for orphans"
+        int type_id FK
+        int region_id FK
+        varchar external_resource_id
+        varchar resource_name
+        varchar status "active,stopped,deleted,unknown"
+        timestamp created_at
+        timestamp deleted_at "NULLABLE"
+        decimal hourly_cost
+    }
+    RESOURCE_TAGS {
+        bigint resource_id FK PK
+        varchar tag_key PK
+        varchar tag_value
+    }
+    RESOURCE_DEPENDENCIES {
+        bigint parent_resource_id FK PK
+        bigint child_resource_id FK PK
+        varchar dependency_type "attached_storage,elastic_ip,network_interface"
+        timestamp created_at
+    }
+    RESOURCE_CONSUMERS {
+        bigint resource_id FK PK
+        bigint project_id FK PK
+        decimal allocation_percentage "0-100"
+    }
+    RESOURCE_STATUS_HISTORY {
+        bigint status_history_id PK
+        bigint resource_id FK
+        varchar previous_status
+        varchar new_status
+        timestamp transition_time
+        varchar reason
+    }
+    ALLOCATED_COSTS {
+        bigint allocated_cost_id PK
+        bigint resource_id FK
+        bigint project_id FK
+        date allocation_month
+        decimal allocation_percentage
+        decimal allocated_amount
+    }

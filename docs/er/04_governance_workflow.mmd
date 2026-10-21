@@ -1,0 +1,139 @@
+erDiagram
+    %% Layer 4: Decision Governance and Audit - clouDBills
+    %% Partial unique: only one pending APPROVAL_REQUESTS per RECOMMENDATIONS where decision IS NULL
+
+    OPTIMIZATION_RULES ||--o{ RECOMMENDATIONS : "triggers"
+    RESOURCES ||--o{ RECOMMENDATIONS : "targets"
+    PROJECTS ||--o{ RECOMMENDATIONS : "impacts"
+    RECOMMENDATIONS ||--o{ RECOMMENDATION_EVIDENCE : "supported_by"
+    METRIC_TYPES |o--o{ RECOMMENDATION_EVIDENCE : "observed"
+    RECOMMENDATIONS ||--o{ APPROVAL_REQUESTS : "reviewed_via"
+    USERS ||--o{ APPROVAL_REQUESTS : "requests"
+    USERS |o--o{ APPROVAL_REQUESTS : "reviews_nullable"
+    RECOMMENDATIONS ||--o{ RECOMMENDATION_STATUS_HISTORY : "audits_state"
+    USERS ||--o{ RECOMMENDATION_STATUS_HISTORY : "changes"
+    RECOMMENDATIONS ||--o{ RECOMMENDATION_ACTIONS : "executes"
+    USERS ||--o{ RECOMMENDATION_ACTIONS : "operates"
+    RECOMMENDATIONS |o--|| SAVINGS_REALIZATION : "validates"
+    PROJECTS |o--o{ BUDGETS : "caps_nullable"
+    TEAMS |o--o{ BUDGETS : "funds_nullable"
+    BUDGETS ||--o{ BUDGET_ALERTS : "fires"
+    USERS |o--o{ AUDIT_LOGS : "performs_nullable"
+
+    OPTIMIZATION_RULES {
+        int rule_id PK
+        varchar rule_name UK
+        varchar rule_type "idle_compute,unattached_volume,missing_tag"
+        varchar description
+        varchar severity "low,medium,high,critical"
+        boolean is_active
+        jsonb parameters
+    }
+    RECOMMENDATIONS {
+        bigint recommendation_id PK
+        int rule_id FK
+        bigint resource_id FK
+        bigint project_id FK
+        varchar recommendation_type
+        varchar problem_description
+        varchar suggested_action
+        decimal estimated_monthly_saving
+        varchar risk_level
+        varchar status "detected,under_review,approved,rejected,deferred,executed,validated,closed"
+        timestamp detected_at
+        timestamp expires_at
+    }
+    RECOMMENDATION_EVIDENCE {
+        bigint evidence_id PK
+        bigint recommendation_id FK
+        int metric_type_id FK "NULLABLE"
+        timestamp observation_start
+        timestamp observation_end
+        decimal observed_value
+        decimal threshold_value
+        text narrative
+    }
+    APPROVAL_REQUESTS {
+        bigint approval_id PK
+        bigint recommendation_id FK
+        bigint requested_by FK
+        bigint reviewed_by FK "NULLABLE"
+        varchar decision "approved,rejected,deferred,NULL=pending"
+        varchar comments
+        timestamp requested_at
+        timestamp reviewed_at
+    }
+    RECOMMENDATION_STATUS_HISTORY {
+        bigint history_id PK
+        bigint recommendation_id FK
+        bigint changed_by FK
+        varchar old_status
+        varchar new_status
+        timestamp changed_at
+        varchar reason
+    }
+    RECOMMENDATION_ACTIONS {
+        bigint action_id PK
+        bigint recommendation_id FK
+        bigint executed_by FK
+        varchar action_type "stop,terminate,detach,delete"
+        varchar execution_status "in_progress,succeeded,failed"
+        timestamp started_at
+        timestamp completed_at
+        jsonb error_payload
+    }
+    SAVINGS_REALIZATION {
+        bigint realization_id PK
+        bigint recommendation_id FK
+        decimal baseline_monthly_cost
+        decimal actual_monthly_cost
+        decimal estimated_saving
+        decimal actual_saving
+        decimal realization_percentage
+        date measurement_start
+        date measurement_end
+        timestamp calculated_at
+    }
+    BUDGETS {
+        bigint budget_id PK
+        bigint project_id FK "NULLABLE"
+        bigint team_id FK "NULLABLE"
+        date budget_month
+        decimal budget_amount
+        decimal warning_percentage
+    }
+    BUDGET_ALERTS {
+        bigint alert_id PK
+        bigint budget_id FK
+        timestamp triggered_at
+        decimal threshold_percentage_reached
+        decimal current_spend
+        decimal budget_amount
+        boolean is_acknowledged
+    }
+    AUDIT_LOGS {
+        bigint audit_id PK
+        bigint user_id FK "NULLABLE for system"
+        varchar action_type
+        varchar entity_type
+        bigint entity_id
+        jsonb old_state
+        jsonb new_state
+        timestamp action_timestamp
+        varchar client_ip
+    }
+    RESOURCES {
+        bigint resource_id PK
+    }
+    PROJECTS {
+        bigint project_id PK
+    }
+    TEAMS {
+        bigint team_id PK
+    }
+    USERS {
+        bigint user_id PK
+    }
+    METRIC_TYPES {
+        int metric_type_id PK
+    }

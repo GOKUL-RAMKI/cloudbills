@@ -1,0 +1,52 @@
+erDiagram
+    %% clouDBills Full Overview - NO ATTRIBUTES (relationships only)
+    %% 33 entities - paste into https://mermaid.live to preview
+
+    CLOUD_PROVIDERS ||--o{ CLOUD_ACCOUNTS : offers
+    CLOUD_PROVIDERS ||--o{ REGIONS : operates_in
+    CLOUD_PROVIDERS ||--o{ RESOURCE_TYPES : defines
+    CLOUD_ACCOUNTS ||--o{ RESOURCES : provisions
+    CLOUD_ACCOUNTS ||--o{ BILLING_IMPORT_BATCHES : ingests
+    CLOUD_ACCOUNTS ||--o{ BILLING_RECORDS : bills
+    USERS ||--o{ TEAMS : manages
+    USERS ||--o{ USER_ROLES : assigned
+    ROLES ||--o{ USER_ROLES : grants
+    TEAMS ||--o{ PROJECTS : owns
+    TEAMS |o--o{ BUDGETS : funds
+    ENVIRONMENTS ||--o{ PROJECTS : stages
+    PROJECTS ||--o{ RESOURCES : groups
+    PROJECTS ||--o{ BUDGETS : caps
+    PROJECTS ||--o{ RESOURCE_CONSUMERS : consumes
+    PROJECTS ||--o{ ALLOCATED_COSTS : charged_to
+    PROJECTS |o--o{ BILLING_RECORDS : attributed_to
+    PROJECTS ||--o{ RECOMMENDATIONS : impacts
+    RESOURCE_TYPES ||--o{ RESOURCES : classifies
+    REGIONS ||--o{ RESOURCES : hosts
+    RESOURCES ||--o{ RESOURCE_TAGS : tagged_as
+    RESOURCES ||--o{ RESOURCE_DEPENDENCIES : linked
+    RESOURCES ||--o{ RESOURCE_CONSUMERS : shared_via
+    RESOURCES ||--o{ RESOURCE_STATUS_HISTORY : transitions
+    RESOURCES ||--o{ ALLOCATED_COSTS : splits_cost
+    RESOURCES |o--o{ BILLING_RECORDS : charged_for
+    RESOURCES ||--o{ USAGE_METRICS : emits
+    RESOURCES ||--o{ RESOURCE_DAILY_SUMMARIES : rolls_up
+    RESOURCES ||--o{ RECOMMENDATIONS : targets
+    USERS ||--o{ BILLING_IMPORT_BATCHES : imports
+    BILLING_IMPORT_BATCHES ||--o{ BILLING_STAGING : lands
+    BILLING_IMPORT_BATCHES ||--o{ BILLING_IMPORT_ERRORS : quarantines
+    BILLING_IMPORT_BATCHES ||--o{ BILLING_RECORDS : produces
+    METRIC_TYPES ||--o{ USAGE_METRICS : measures
+    METRIC_TYPES ||--o{ RESOURCE_DAILY_SUMMARIES : aggregates
+    METRIC_TYPES |o--o{ RECOMMENDATION_EVIDENCE : observed
+    OPTIMIZATION_RULES ||--o{ RECOMMENDATIONS : triggers
+    RECOMMENDATIONS ||--o{ RECOMMENDATION_EVIDENCE : supported_by
+    RECOMMENDATIONS ||--o{ APPROVAL_REQUESTS : reviewed_via
+    RECOMMENDATIONS ||--o{ RECOMMENDATION_STATUS_HISTORY : audits_state
+    RECOMMENDATIONS ||--o{ RECOMMENDATION_ACTIONS : executes
+    RECOMMENDATIONS |o--|| SAVINGS_REALIZATION : validates
+    USERS ||--o{ APPROVAL_REQUESTS : requests
+    USERS |o--o{ APPROVAL_REQUESTS : reviews
+    USERS ||--o{ RECOMMENDATION_STATUS_HISTORY : changes
+    USERS ||--o{ RECOMMENDATION_ACTIONS : operates
+    USERS |o--o{ AUDIT_LOGS : performs
+    BUDGETS ||--o{ BUDGET_ALERTS : fires
