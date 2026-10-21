@@ -2,4 +2,9 @@
 .claude/
 node_modules/
 skills-lock/
+docs/er/
 .env
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
