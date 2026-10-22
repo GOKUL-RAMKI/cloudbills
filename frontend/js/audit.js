@@ -54,9 +54,10 @@ function renderState(value) {
   if (value === null || value === undefined) return '<span class="muted">-</span>';
   const entries = typeof value === "object" ? Object.entries(value) : [];
   if (!entries.length) return '<span class="muted">-</span>';
-  return `<div class="state-text">${entries
-    .map(([key, item]) => `${escapeHtml(key)}=${escapeHtml(typeof item === "object" ? JSON.stringify(item) : item)}`)
-    .join(" &middot; ")}</div>`;
+  const text = entries
+    .map(([key, item]) => `${key}=${typeof item === "object" ? JSON.stringify(item) : item}`)
+    .join("; ");
+  return `<div class="state-text" title="${escapeHtml(text)}">${escapeHtml(text)}</div>`;
 }
 
 document.addEventListener("DOMContentLoaded", initAudit);

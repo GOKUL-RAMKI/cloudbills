@@ -292,7 +292,7 @@ async function showResourceDetail(id) {
       ? data.status_history
           .map(
             (item) => `<div class="list-item">
-              <div><div class="title">${escapeHtml(item.previous_status || "new")} &rarr; ${escapeHtml(item.new_status)}</div>
+              <div><div class="title">${escapeHtml(item.previous_status || "new")} to ${escapeHtml(item.new_status)}</div>
               <div class="sub">${escapeHtml(item.reason || "No reason recorded")}</div></div>
               <div class="muted small">${escapeHtml(formatDate(item.transition_time, true))}</div>
             </div>`
@@ -303,7 +303,7 @@ async function showResourceDetail(id) {
       ? data.recommendations
           .map(
             (item) => `<div class="list-item">
-              <div><div class="title">${escapeHtml(item.recommendation_type.replace(/_/g, " "))}</div>
+              <div><div class="title">${escapeHtml(sentenceCase(item.recommendation_type))}</div>
               <div class="sub">${escapeHtml(formatDate(item.detected_at))}</div></div>
               <div style="text-align:right">${badge(item.status)}<div class="small num">${escapeHtml(money(item.estimated_monthly_saving))}</div></div>
             </div>`
@@ -320,7 +320,7 @@ async function showResourceDetail(id) {
             <dt>Provider</dt><dd>${escapeHtml(r.provider_name)} / ${escapeHtml(r.account_name)}</dd>
             <dt>Project</dt><dd>${escapeHtml(r.project_name || "Unassigned")}</dd>
             <dt>Type</dt><dd>${escapeHtml(r.raw_type_name)} (${escapeHtml(r.generic_category)})</dd>
-            <dt>Region</dt><dd>${escapeHtml(r.region_code)} &middot; ${escapeHtml(r.region_name)}</dd>
+            <dt>Region</dt><dd>${escapeHtml(r.region_code)}, ${escapeHtml(r.region_name)}</dd>
             <dt>Status</dt><dd>${badge(r.status)}</dd>
             <dt>Hourly cost</dt><dd>${escapeHtml(money(r.hourly_cost))}</dd>
             <dt>Active tags</dt><dd>${tags.length ? tags.map(([k, v]) => `<span class="chip">${escapeHtml(k)}=${escapeHtml(v)}</span>`).join("") : '<span class="chip empty">untagged</span>'}</dd>

@@ -84,6 +84,7 @@ function renderBudgets(rows) {
         ? `<div>${escapeHtml(row.project_name)}</div><div class="muted small">Project</div>`
         : `<div>${escapeHtml(row.team_name)}</div><div class="muted small">Team</div>`;
       const used = Math.min(100, Math.max(0, Number(row.utilization_percentage || 0)));
+      const rawUsed = Number(row.utilization_percentage || 0);
       return `
         <tr>
           <td>${scope}</td>
@@ -91,10 +92,10 @@ function renderBudgets(rows) {
           <td class="num">${escapeHtml(money(row.budget_amount))}</td>
           <td class="num">${escapeHtml(money(row.current_spend))}</td>
           <td>
-            <div class="progress ${escapeHtml(row.budget_status)}" title="${escapeHtml(num(row.utilization_percentage, 1))}%">
+            <div class="progress ${escapeHtml(row.budget_status)}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${used}" title="${escapeHtml(num(rawUsed, 1))}% used">
               <span style="width:${used}%"></span>
             </div>
-            <div class="muted small" style="margin-top:4px">${escapeHtml(num(row.utilization_percentage, 1))}% &middot; warning at ${escapeHtml(num(row.warning_percentage, 0))}%</div>
+            <div class="muted small" style="margin-top:4px">${escapeHtml(num(rawUsed, 1))}% used, warning at ${escapeHtml(num(row.warning_percentage, 0))}%</div>
           </td>
           <td>${badge(row.budget_status)}</td>
           <td>

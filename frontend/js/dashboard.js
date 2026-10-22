@@ -18,13 +18,13 @@ async function loadDashboard() {
 
     const cards = [
       ["Monthly spend", compactMoney(s.monthly_spend), deltaLabel, "accent"],
-      ["Estimated savings", compactMoney(s.estimated_savings), "Open opportunities in queue", "blue"],
-      ["Pending approvals", num(s.pending_approvals), "Recommendations awaiting a decision", "amber"],
-      ["Open budget alerts", num(s.open_alerts), "Thresholds breached", s.open_alerts > 0 ? "red" : "accent"],
-      ["Active resources", `${num(s.active_resources)} / ${num(s.total_resources)}`, "Inventory items in scope", ""],
-      ["Idle compute", num(s.idle_candidates), "Detected by idle_compute function", ""],
+      ["Estimated savings", compactMoney(s.estimated_savings), "Open opportunities in approvals", "blue"],
+      ["Pending approvals", num(s.pending_approvals), "Awaiting a decision", "amber"],
+      ["Open budget alerts", num(s.open_alerts), "Budgets over their warning line", s.open_alerts > 0 ? "red" : "accent"],
+      ["Active resources", `${num(s.active_resources)} / ${num(s.total_resources)}`, "Resources in scope", ""],
+      ["Idle compute", num(s.idle_candidates), "Flagged by the idle compute rule", ""],
       ["Orphaned volumes", num(s.orphaned_volumes), "Storage with no active parent", ""],
-      ["Missing tags", num(s.missing_tags), "Active resources lacking FinOps tags", ""],
+      ["Missing tags", num(s.missing_tags), "Resources missing FinOps tags", ""],
     ];
 
     kpis.innerHTML = cards
@@ -56,6 +56,13 @@ function renderSpendChart(rows) {
     return;
   }
   const max = Math.max(...rows.map((row) => Number(row.amount || 0)), 1);
+  container.setAttribute("role", "img");
+  container.setAttribute(
+    "aria-label",
+    `Monthly spend: ${rows
+      .map((row) => `${monthLabel(row.month)} ${money(row.amount)}`)
+      .join(", ")}`
+  );
   container.innerHTML = rows
     .map((row) => {
       const amount = Number(row.amount || 0);
@@ -80,14 +87,15 @@ function renderTopProjects(rows) {
   body.innerHTML = rows
     .map((row) => {
       const amount = Number(row.amount || 0);
+      const share = Math.max(4, Math.round((amount / max) * 100));
       return `
         <tr>
           <td>${escapeHtml(row.project_name)}</td>
           <td class="muted">${escapeHtml(row.team_name)}</td>
           <td class="num">${escapeHtml(money(amount))}</td>
           <td>
-            <div class="progress" title="${Math.round((amount / max) * 100)}%">
-              <span style="width:${Math.max(4, Math.round((amount / max) * 100))}%"></span>
+            <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${share}" title="${share}% of top project spend">
+              <span style="width:${share}%"></span>
             </div>
           </td>
         </tr>`;
@@ -107,7 +115,7 @@ function renderRecent(rows) {
       <tr>
         <td>
           <div>${escapeHtml(row.resource_name)}</div>
-          <div class="muted small">${escapeHtml(row.recommendation_type.replace(/_/g, " "))}</div>
+          <div class="muted small">${escapeHtml(sentenceCase(row.recommendation_type))}</div>
         </td>
         <td class="muted">${escapeHtml(row.project_name)}</td>
         <td class="num">${escapeHtml(money(row.estimated_monthly_saving))}</td>
@@ -129,7 +137,7 @@ function renderAlerts(rows) {
       <div class="list-item">
         <div>
           <div class="title">${escapeHtml(row.project_name || row.team_name || "Budget")}</div>
-          <div class="sub">${escapeHtml(monthLabel(row.budget_month))} &middot; ${escapeHtml(money(row.current_spend))} of ${escapeHtml(money(row.budget_amount))}</div>
+          <div class="sub">${escapeHtml(monthLabel(row.budget_month))}, ${escapeHtml(money(row.current_spend))} of ${escapeHtml(money(row.budget_amount))}</div>
         </div>
         <div style="text-align:right">
           ${badge(row.utilization_percentage >= 100 ? "over_budget" : "warning")}
@@ -154,7 +162,7 @@ function detectionCard(title, subtitle, rows, renderRow, link) {
           <h3>${escapeHtml(title)}</h3>
           <p>${escapeHtml(subtitle)}</p>
         </div>
-        ${link ? `<a class="btn btn-ghost btn-sm" href="${link}">Open</a>` : ""}
+        ${link ? `<a class="btn btn-ghost btn-sm" href="${link}">View</a>` : ""}
       </div>
       <div class="list">${content}</div>
     </div>`;
@@ -169,7 +177,7 @@ function renderDetections(idle, orphaned, missing) {
     (row) => `
       <div>
         <div class="title">${escapeHtml(row.resource_name)}</div>
-        <div class="sub">${escapeHtml(row.project_name || "Unassigned")} &middot; avg ${escapeHtml(num(row.average_cpu_percent, 1))}%</div>
+        <div class="sub">${escapeHtml(row.project_name || "Unassigned")}, avg ${escapeHtml(num(row.average_cpu_percent, 1))}%</div>
       </div>
       <div class="num">${escapeHtml(money(row.estimated_monthly_waste))}</div>`,
     "/pages/resources.html"
@@ -181,7 +189,7 @@ function renderDetections(idle, orphaned, missing) {
     (row) => `
       <div>
         <div class="title">${escapeHtml(row.resource_name)}</div>
-        <div class="sub">${escapeHtml(row.project_name || "Unassigned")} &middot; ${escapeHtml(row.region_code)}</div>
+        <div class="sub">${escapeHtml(row.project_name || "Unassigned")}, ${escapeHtml(row.region_code)}</div>
       </div>
       <div class="num">${escapeHtml(money(row.estimated_monthly_waste))}</div>`,
     "/pages/resources.html"

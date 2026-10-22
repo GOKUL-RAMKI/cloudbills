@@ -60,10 +60,20 @@ function num(value, digits = 0) {
   }).format(Number(value || 0));
 }
 
+function sentenceCase(value) {
+  let text = String(value || "").replace(/_/g, " ").toLowerCase();
+  text = text
+    .replace(/\bip\b/g, "IP")
+    .replace(/\bid\b/g, "ID")
+    .replace(/\bcpu\b/g, "CPU")
+    .replace(/\bcsv\b/g, "CSV")
+    .replace(/\bapi\b/g, "API");
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 function badge(status) {
   const raw = String(status || "unknown");
-  const label = raw.replace(/_/g, " ");
-  return `<span class="badge ${escapeHtml(raw)}">${escapeHtml(label)}</span>`;
+  return `<span class="badge ${escapeHtml(raw)}">${escapeHtml(sentenceCase(raw))}</span>`;
 }
 
 function monthLabel(value) {
@@ -95,6 +105,8 @@ function toast(message, type = "success") {
   if (!stack) {
     stack = document.createElement("div");
     stack.className = "toast-stack";
+    stack.setAttribute("role", "status");
+    stack.setAttribute("aria-live", "polite");
     document.body.appendChild(stack);
   }
   const item = document.createElement("div");
@@ -108,30 +120,78 @@ function toast(message, type = "success") {
   }, 4200);
 }
 
+let modalReturnFocus = null;
+
 function openModal(id) {
   const modal = document.getElementById(id);
-  if (modal) modal.classList.remove("hidden");
+  if (!modal) return;
+  modalReturnFocus = document.activeElement;
+  modal.classList.remove("hidden");
+  const dialog = modal.querySelector(".modal");
+  if (!dialog) return;
+  const target = dialog.querySelector(
+    'input:not([type="hidden"]), select, textarea, button:not([disabled])'
+  );
+  if (target && window.matchMedia("(pointer: fine)").matches) {
+    target.focus();
+  }
+}
+
+function hideModal(backdrop) {
+  if (!backdrop) return;
+  backdrop.classList.add("hidden");
+  if (modalReturnFocus && document.contains(modalReturnFocus)) {
+    modalReturnFocus.focus();
+  }
+  modalReturnFocus = null;
 }
 
 function closeModal(id) {
-  const modal = document.getElementById(id);
-  if (modal) modal.classList.add("hidden");
+  hideModal(document.getElementById(id));
 }
 
 function initModals() {
   document.querySelectorAll(".modal-backdrop").forEach((backdrop) => {
+    const modal = backdrop.querySelector(".modal");
+    if (modal) {
+      modal.setAttribute("role", "dialog");
+      modal.setAttribute("aria-modal", "true");
+      const heading = modal.querySelector("h2");
+      if (heading) {
+        if (!heading.id) heading.id = `${backdrop.id}-title`;
+        modal.setAttribute("aria-labelledby", heading.id);
+      }
+      modal.setAttribute("tabindex", "-1");
+    }
     backdrop.addEventListener("click", (event) => {
-      if (event.target === backdrop) backdrop.classList.add("hidden");
+      if (event.target === backdrop) hideModal(backdrop);
     });
     backdrop.querySelectorAll("[data-close]").forEach((button) => {
-      button.addEventListener("click", () => backdrop.classList.add("hidden"));
+      button.addEventListener("click", () => hideModal(backdrop));
     });
   });
   document.addEventListener("keydown", (event) => {
+    const open = document.querySelector(".modal-backdrop:not(.hidden)");
+    if (!open) return;
     if (event.key === "Escape") {
-      document.querySelectorAll(".modal-backdrop:not(.hidden)").forEach((modal) => {
-        modal.classList.add("hidden");
-      });
+      hideModal(open);
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const focusable = Array.from(
+      open.querySelectorAll(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )
+    ).filter((element) => element.offsetParent !== null);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
     }
   });
 }

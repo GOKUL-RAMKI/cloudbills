@@ -4,16 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>clouDBills &middot; Approvals</title>
+  <meta name="theme-color" content="#eceee8">
   <link rel="stylesheet" href="/css/styles.css">
 </head>
 <body data-page="recommendations">
   <header id="app-header"></header>
 
-  <main>
+  <main id="main">
     <div class="page-head">
       <div>
-        <h1>Optimization approvals</h1>
-        <p>Review evidence, request sign-off, approve or reject, execute remediation and record realised savings. Approval uses row-level locking to stop duplicate decisions.</p>
+        <h1>Approval queue</h1>
+        <p>Review the evidence, request sign-off and record realised savings. Each decision is written to the audit trail.</p>
       </div>
       <div class="page-actions">
         <button class="btn" id="refresh-recommendations">Refresh queue</button>
@@ -34,7 +35,7 @@
         <div class="spacer"></div>
         <span class="muted small" id="recommendation-count"></span>
       </div>
-      <div class="table-wrap">
+      <div class="table-wrap table-wide">
         <table>
           <thead>
             <tr>
@@ -44,7 +45,7 @@
             </tr>
           </thead>
           <tbody id="recommendations-body">
-            <tr><td colspan="9" class="empty">Loading queue ...</td></tr>
+            <tr><td colspan="9" class="empty">Loading queue…</td></tr>
           </tbody>
         </table>
       </div>
@@ -55,9 +56,9 @@
     <div class="modal">
       <div class="modal-head">
         <h2 id="decision-title">Review recommendation</h2>
-        <button class="icon-btn" data-close type="button">&times;</button>
+        <button class="icon-btn" data-close type="button" aria-label="Close dialog">&times;</button>
       </div>
-      <form id="decision-form">
+      <form id="decision-form" autocomplete="off">
         <div class="modal-body">
           <input type="hidden" id="decision-rec-id">
           <input type="hidden" id="decision-kind">
@@ -79,9 +80,9 @@
     <div class="modal">
       <div class="modal-head">
         <h2>Execute remediation</h2>
-        <button class="icon-btn" data-close type="button">&times;</button>
+        <button class="icon-btn" data-close type="button" aria-label="Close dialog">&times;</button>
       </div>
-      <form id="execute-form">
+      <form id="execute-form" autocomplete="off">
         <div class="modal-body">
           <input type="hidden" id="execute-rec-id">
           <div class="field">
@@ -108,10 +109,10 @@
   <div class="modal-backdrop hidden" id="savings-modal">
     <div class="modal">
       <div class="modal-head">
-        <h2>Record realized savings</h2>
-        <button class="icon-btn" data-close type="button">&times;</button>
+        <h2>Record realised savings</h2>
+        <button class="icon-btn" data-close type="button" aria-label="Close dialog">&times;</button>
       </div>
-      <form id="savings-form">
+      <form id="savings-form" autocomplete="off">
         <div class="modal-body">
           <input type="hidden" id="savings-rec-id">
           <div class="form-grid">
@@ -145,9 +146,9 @@
     <div class="modal wide">
       <div class="modal-head">
         <h2>Recommendation detail</h2>
-        <button class="icon-btn" data-close type="button">&times;</button>
+        <button class="icon-btn" data-close type="button" aria-label="Close dialog">&times;</button>
       </div>
-      <div class="modal-body" id="detail-body">Loading ...</div>
+      <div class="modal-body" id="detail-body">Loading…</div>
       <div class="modal-foot"><button class="btn" data-close type="button">Close</button></div>
     </div>
   </div>

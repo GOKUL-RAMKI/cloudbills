@@ -4,16 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>clouDBills &middot; Billing</title>
+  <meta name="theme-color" content="#eceee8">
   <link rel="stylesheet" href="/css/styles.css">
 </head>
 <body data-page="billing">
   <header id="app-header"></header>
 
-  <main>
+  <main id="main">
     <div class="page-head">
       <div>
-        <h1>Billing ingestion and spend</h1>
-        <p>CSV files land in an untyped staging table through COPY, then a stored procedure casts, validates, loads and quarantines bad rows.</p>
+        <h1>Billing and usage</h1>
+        <p>Import provider invoices, validate billing rows and review monthly spend and shared-cost allocation.</p>
       </div>
       <div class="page-actions">
         <button class="btn" id="refresh-billing">Refresh</button>
@@ -28,9 +29,10 @@
             <p>Columns: provider_name, external_account_id, external_resource_id, service_name, usage_start_text, usage_end_text, usage_quantity_text, billed_cost_text, currency_code_text.</p>
           </div>
         </div>
-        <form id="upload-form" class="toolbar" style="border:none;padding:0">
+        <form id="upload-form" class="upload-form" autocomplete="off">
+          <label class="sr-only" for="upload-file">Billing CSV file</label>
           <input type="file" id="upload-file" accept=".csv,text/csv" required>
-          <select id="upload-account"><option value="">Infer account from first row</option></select>
+          <select id="upload-account" aria-label="Cloud account"><option value="">Infer account from first row</option></select>
           <button class="btn btn-primary" type="submit" id="upload-submit">Upload and validate</button>
         </form>
         <div id="upload-result" style="margin-top:14px"></div>
@@ -39,21 +41,21 @@
 
     <div class="card section">
       <div class="toolbar">
-        <select id="billing-project"><option value="">All projects</option></select>
-        <input type="month" id="billing-month">
+        <select id="billing-project" aria-label="Filter by project"><option value="">All projects</option></select>
+        <input type="month" id="billing-month" aria-label="Filter by month">
         <button class="btn" id="apply-billing-filter">Apply</button>
         <button class="btn btn-ghost" id="clear-billing-filter">Clear</button>
         <div class="spacer"></div>
         <span class="muted small">Batch total</span>
         <strong id="billing-total">$0.00</strong>
       </div>
-      <div class="table-wrap">
+      <div class="table-wrap table-wide">
         <table>
           <thead>
             <tr><th>Usage start</th><th>Resource</th><th>Project</th><th>Service</th>
               <th class="num">Quantity</th><th class="num">Billed cost</th><th>Account</th><th>Batch</th></tr>
           </thead>
-          <tbody id="billing-body"><tr><td colspan="8" class="empty">Loading billing records ...</td></tr></tbody>
+          <tbody id="billing-body"><tr><td colspan="8" class="empty">Loading billing records…</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -96,7 +98,7 @@
           <p>Accepted and rejected row counts are written by validate_billing_batch.</p>
         </div>
       </div>
-      <div class="table-wrap">
+      <div class="table-wrap table-wide">
         <table>
           <thead><tr><th>ID</th><th>File</th><th>Account</th><th>Status</th>
             <th class="num">Rows</th><th class="num">Accepted</th><th class="num">Rejected</th>
@@ -111,9 +113,9 @@
     <div class="modal wide">
       <div class="modal-head">
         <h2>Quarantined rows</h2>
-        <button class="icon-btn" data-close type="button">&times;</button>
+        <button class="icon-btn" data-close type="button" aria-label="Close dialog">&times;</button>
       </div>
-      <div class="modal-body" id="errors-body">Loading ...</div>
+      <div class="modal-body" id="errors-body">Loading…</div>
       <div class="modal-foot"><button class="btn" data-close type="button">Close</button></div>
     </div>
   </div>

@@ -3,17 +3,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>clouDBills &middot; Inventory</title>
+  <title>clouDBills &middot; Resources</title>
+  <meta name="theme-color" content="#eceee8">
   <link rel="stylesheet" href="/css/styles.css">
 </head>
 <body data-page="resources">
   <header id="app-header"></header>
 
-  <main>
+  <main id="main">
     <div class="page-head">
       <div>
         <h1>Resource inventory</h1>
-        <p>Create, update and soft-delete cloud resources. Tags are stored as atomic rows and every write goes through a stored program.</p>
+        <p>Create, update and retire cloud resources. Tags and status changes are recorded in the audit trail.</p>
       </div>
       <div class="page-actions">
         <button class="btn" id="refresh-resources">Refresh</button>
@@ -23,26 +24,26 @@
 
     <div class="card">
       <div class="toolbar">
-        <input type="search" id="resource-search" placeholder="Search name or external id">
-        <select id="filter-status">
+        <input type="search" id="resource-search" placeholder="Search name or external ID…" aria-label="Search resources">
+        <select id="filter-status" aria-label="Filter by status">
           <option value="">All statuses</option>
           <option value="active">Active</option>
           <option value="stopped">Stopped</option>
           <option value="deleted">Deleted</option>
           <option value="unknown">Unknown</option>
         </select>
-        <select id="filter-category">
+        <select id="filter-category" aria-label="Filter by category">
           <option value="">All categories</option>
           <option value="compute">Compute</option>
           <option value="storage">Storage</option>
           <option value="network">Network</option>
           <option value="database">Database</option>
         </select>
-        <select id="filter-project"><option value="">All projects</option></select>
+        <select id="filter-project" aria-label="Filter by project"><option value="">All projects</option></select>
         <div class="spacer"></div>
         <span class="muted small" id="resource-count"></span>
       </div>
-      <div class="table-wrap">
+      <div class="table-wrap table-wide">
         <table>
           <thead>
             <tr>
@@ -52,7 +53,7 @@
             </tr>
           </thead>
           <tbody id="resources-body">
-            <tr><td colspan="10" class="empty">Loading inventory ...</td></tr>
+            <tr><td colspan="10" class="empty">Loading inventory…</td></tr>
           </tbody>
         </table>
       </div>
@@ -62,22 +63,22 @@
       <div class="section-head">
         <div>
           <h2>Waste detectors</h2>
-          <p>Read-only functions that evaluate the inventory and telemetry without writing to the database.</p>
+          <p>Read-only checks for idle compute, orphaned volumes and missing tags.</p>
         </div>
         <button class="btn btn-ghost btn-sm" id="rerun-detectors">Re-run detectors</button>
       </div>
       <div class="grid grid-3">
         <div class="card">
           <div class="card-pad"><h3>Idle compute</h3><p class="muted small">Average CPU below the rule threshold for 21 days.</p></div>
-          <div class="table-wrap"><table><tbody id="detect-idle"><tr><td class="empty">Running ...</td></tr></tbody></table></div>
+          <div class="table-wrap"><table><tbody id="detect-idle"><tr><td class="empty">Running…</td></tr></tbody></table></div>
         </div>
         <div class="card">
           <div class="card-pad"><h3>Orphaned volumes</h3><p class="muted small">Storage resources without an active parent attachment.</p></div>
-          <div class="table-wrap"><table><tbody id="detect-orphaned"><tr><td class="empty">Running ...</td></tr></tbody></table></div>
+          <div class="table-wrap"><table><tbody id="detect-orphaned"><tr><td class="empty">Running…</td></tr></tbody></table></div>
         </div>
         <div class="card">
           <div class="card-pad"><h3>Missing tags</h3><p class="muted small">Active resources missing owner, project or environment tags.</p></div>
-          <div class="table-wrap"><table><tbody id="detect-tags"><tr><td class="empty">Running ...</td></tr></tbody></table></div>
+          <div class="table-wrap"><table><tbody id="detect-tags"><tr><td class="empty">Running…</td></tr></tbody></table></div>
         </div>
       </div>
     </section>
@@ -87,9 +88,9 @@
     <div class="modal">
       <div class="modal-head">
         <h2 id="resource-modal-title">Add resource</h2>
-        <button class="icon-btn" data-close type="button">&times;</button>
+        <button class="icon-btn" data-close type="button" aria-label="Close dialog">&times;</button>
       </div>
-      <form id="resource-form">
+      <form id="resource-form" autocomplete="off">
         <div class="modal-body">
           <input type="hidden" id="resource-id">
           <div class="form-grid">
@@ -98,8 +99,8 @@
               <input id="resource-name" required maxlength="255">
             </div>
             <div class="field">
-              <label for="resource-external">External resource id</label>
-              <input id="resource-external" required maxlength="255">
+              <label for="resource-external">External resource ID</label>
+              <input id="resource-external" required maxlength="255" spellcheck="false">
             </div>
             <div class="field">
               <label for="resource-account">Cloud account</label>
@@ -132,7 +133,7 @@
             </div>
             <div class="field full">
               <label for="resource-tags">Tags</label>
-              <textarea id="resource-tags" placeholder="owner=web-team&#10;environment=production&#10;cost-center=CC-1003"></textarea>
+              <textarea id="resource-tags" spellcheck="false" placeholder="owner=web-team&#10;environment=production&#10;cost-center=CC-1003"></textarea>
               <div class="form-hint">One key=value pair per line. Saving replaces the resource tag set.</div>
             </div>
           </div>
@@ -149,9 +150,9 @@
     <div class="modal wide">
       <div class="modal-head">
         <h2>Resource detail</h2>
-        <button class="icon-btn" data-close type="button">&times;</button>
+        <button class="icon-btn" data-close type="button" aria-label="Close dialog">&times;</button>
       </div>
-      <div class="modal-body" id="detail-body">Loading ...</div>
+      <div class="modal-body" id="detail-body">Loading…</div>
       <div class="modal-foot"><button class="btn" data-close type="button">Close</button></div>
     </div>
   </div>

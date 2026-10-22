@@ -3,32 +3,33 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>clouDBills &middot; FinOps control room</title>
+  <title>clouDBills &middot; Spend overview</title>
+  <meta name="theme-color" content="#eceee8">
   <link rel="stylesheet" href="/css/styles.css">
 </head>
 <body data-page="dashboard">
   <header id="app-header"></header>
 
-  <main>
+  <main id="main">
     <div class="page-head">
       <div>
-        <h1>FinOps control room</h1>
-        <p>Cloud spend, waste detections and the approval queue, all computed inside PostgreSQL stored programs.</p>
+        <h1>Spend overview</h1>
+        <p>Monthly cloud spend, waste findings and approvals across every linked account.</p>
       </div>
       <div class="page-actions">
-        <a class="btn" href="/pages/recommendations.html">Open approval queue</a>
-        <a class="btn btn-primary" href="/pages/billing.html">Upload billing CSV</a>
+        <a class="btn" href="/pages/recommendations.html">Review approvals</a>
+        <a class="btn btn-primary" href="/pages/billing.html">Upload billing</a>
       </div>
     </div>
 
-    <section class="grid grid-kpi" id="kpis"></section>
+    <section class="grid grid-kpi" id="kpis" aria-label="Key figures"></section>
 
     <section class="grid grid-2 section">
       <div class="card">
         <div class="card-pad section-head" style="margin-bottom:0">
           <div>
             <h2>Spend by month</h2>
-            <p>Aggregated from the partitioned billing fact table.</p>
+            <p>Invoiced spend by month across all accounts.</p>
           </div>
         </div>
         <div id="spend-chart" class="bars"></div>
@@ -37,7 +38,7 @@
         <div class="card-pad section-head" style="margin-bottom:0">
           <div>
             <h2>Top projects this month</h2>
-            <p>Point-in-time project attribution from billing records.</p>
+            <p>Where this month's spend landed.</p>
           </div>
         </div>
         <div class="table-wrap">
@@ -54,7 +55,7 @@
         <div class="card-pad section-head" style="margin-bottom:0">
           <div>
             <h2>Recent recommendations</h2>
-            <p>Latest findings from rule-based waste detection.</p>
+            <p>Open and recent findings from the waste rules.</p>
           </div>
           <a class="btn btn-ghost btn-sm" href="/pages/recommendations.html">View all</a>
         </div>
@@ -69,7 +70,7 @@
         <div class="card-pad section-head" style="margin-bottom:0">
           <div>
             <h2>Budget alerts</h2>
-            <p>Rows inserted automatically when spend crosses the warning line.</p>
+            <p>Budgets that have crossed their warning line.</p>
           </div>
           <a class="btn btn-ghost btn-sm" href="/pages/budgets.html">Manage budgets</a>
         </div>
@@ -80,8 +81,8 @@
     <section class="section">
       <div class="section-head">
         <div>
-          <h2>Live waste detectors</h2>
-          <p>Functions evaluated on demand: idle compute, orphaned storage and missing FinOps tags.</p>
+          <h2>Waste detectors</h2>
+          <p>Rules that look for idle, orphaned and untagged resources.</p>
         </div>
         <a class="btn btn-ghost btn-sm" href="/pages/resources.html">Inspect inventory</a>
       </div>

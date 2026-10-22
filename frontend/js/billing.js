@@ -157,7 +157,7 @@ async function loadBatches() {
           <td>${badge(row.status)}</td>
           <td class="num">${row.row_count}</td>
           <td class="num">${row.accepted_count}</td>
-          <td class="num" style="color:${row.rejected_count > 0 ? "var(--red)" : "inherit"}">${row.rejected_count}</td>
+          <td class="num" style="color:${row.rejected_count > 0 ? "var(--accent)" : "inherit"}">${row.rejected_count}</td>
           <td class="small muted nowrap">${escapeHtml(formatDate(row.imported_at, true))}</td>
           <td><button class="btn btn-sm" data-batch="${row.batch_id}">View</button></td>
         </tr>`
@@ -184,7 +184,7 @@ async function uploadBatch(event) {
   const button = $("upload-submit");
   const result = $("upload-result");
   button.disabled = true;
-  result.innerHTML = `<div class="notice">Uploading and validating ...</div>`;
+  result.innerHTML = `<div class="notice">Uploading and validating…</div>`;
   try {
     const data = await api("/batches/upload", { method: "POST", body: form });
     const rejected = data.batch.rejected_count;

@@ -54,9 +54,9 @@ function renderRecommendations(data) {
   }
   body.innerHTML = data.items
     .map((row) => {
-      const actions = [`<button class="btn btn-sm" data-action="view" data-id="${row.recommendation_id}">Details</button>`];
+      const actions = [`<button class="btn btn-sm" data-action="view" data-id="${row.recommendation_id}">View</button>`];
       if (row.status === "detected") {
-        actions.push(`<button class="btn btn-sm btn-primary" data-action="request" data-id="${row.recommendation_id}">Submit</button>`);
+        actions.push(`<button class="btn btn-sm btn-primary" data-action="request" data-id="${row.recommendation_id}">Submit for review</button>`);
       }
       if (row.status === "under_review") {
         actions.push(`<button class="btn btn-sm btn-primary" data-action="approve" data-id="${row.recommendation_id}">Approve</button>`);
@@ -76,7 +76,7 @@ function renderRecommendations(data) {
             <div class="muted small">${escapeHtml(row.rule_name)}</div>
           </td>
           <td>${escapeHtml(row.project_name)}<div class="muted small">${escapeHtml(row.team_name)}</div></td>
-          <td>${escapeHtml(row.recommendation_type.replace(/_/g, " "))}</td>
+          <td>${escapeHtml(sentenceCase(row.recommendation_type))}</td>
           <td class="num">${escapeHtml(money(row.estimated_monthly_saving))}</td>
           <td>${badge(row.risk_level || "unknown")}</td>
           <td>${badge(row.status)}</td>
@@ -238,14 +238,19 @@ async function openDetail(id) {
     const rec = data.recommendation;
     const evidence = data.evidence.length
       ? data.evidence
-          .map(
-            (item) => `<div class="list-item">
+          .map((item) => {
+            const measurement = [
+              item.observed_value !== null ? `Observed ${num(item.observed_value, 2)}` : "",
+              item.threshold_value !== null ? `Threshold ${num(item.threshold_value, 2)}` : "",
+            ]
+              .filter(Boolean)
+              .join("; ");
+            return `<div class="list-item">
               <div><div class="title">${escapeHtml(item.metric_name || "Operational evidence")}</div>
               <div class="sub">${escapeHtml(item.narrative || "")}</div></div>
-              <div class="small num">Observed ${item.observed_value !== null ? escapeHtml(num(item.observed_value, 2)) : "-"}
-                ${item.threshold_value !== null ? ` / threshold ${escapeHtml(num(item.threshold_value, 2))}` : ""}</div>
-            </div>`
-          )
+              ${measurement ? `<div class="small num evidence-value">${escapeHtml(measurement)}</div>` : ""}
+            </div>`;
+          })
           .join("")
       : `<div class="empty">No evidence rows.</div>`;
     const approvals = data.approvals.length
@@ -253,7 +258,7 @@ async function openDetail(id) {
           .map(
             (item) => `<div class="list-item">
               <div><div class="title">${escapeHtml(item.decision || "pending")}</div>
-              <div class="sub">Requested by ${escapeHtml(item.requested_by_name || "-")}${item.reviewed_by_name ? ` &middot; reviewed by ${escapeHtml(item.reviewed_by_name)}` : ""}</div></div>
+              <div class="sub">Requested by ${escapeHtml(item.requested_by_name || "-")}.${item.reviewed_by_name ? ` Reviewed by ${escapeHtml(item.reviewed_by_name)}.` : ""}</div></div>
               <div class="muted small">${escapeHtml(formatDate(item.requested_at, true))}</div>
             </div>`
           )
@@ -263,8 +268,8 @@ async function openDetail(id) {
       ? data.status_history
           .map(
             (item) => `<div class="list-item">
-              <div><div class="title">${escapeHtml(item.old_status || "new")} &rarr; ${escapeHtml(item.new_status)}</div>
-              <div class="sub">${escapeHtml(item.reason || "No reason recorded")} &middot; ${escapeHtml(item.changed_by_name || "system")}</div></div>
+              <div><div class="title">${escapeHtml(item.old_status || "new")} to ${escapeHtml(item.new_status)}</div>
+              <div class="sub">${escapeHtml(item.reason || "No reason recorded")}, ${escapeHtml(item.changed_by_name || "system")}</div></div>
               <div class="muted small">${escapeHtml(formatDate(item.changed_at, true))}</div>
             </div>`
           )
@@ -274,8 +279,8 @@ async function openDetail(id) {
       ? data.actions
           .map(
             (item) => `<div class="list-item">
-              <div><div class="title">${escapeHtml(item.action_type.replace(/_/g, " "))}</div>
-              <div class="sub">${escapeHtml(item.executed_by_name || "system")} &middot; ${escapeHtml(formatDate(item.started_at, true))}</div></div>
+              <div><div class="title">${escapeHtml(sentenceCase(item.action_type))}</div>
+              <div class="sub">${escapeHtml(item.executed_by_name || "system")}, ${escapeHtml(formatDate(item.started_at, true))}</div></div>
               <div>${badge(item.execution_status)}</div>
             </div>`
           )
@@ -288,7 +293,7 @@ async function openDetail(id) {
           <dt>Estimated saving</dt><dd>${escapeHtml(money(data.savings.estimated_saving))}</dd>
           <dt>Actual saving</dt><dd>${escapeHtml(money(data.savings.actual_saving))}</dd>
           <dt>Realization</dt><dd>${escapeHtml(num(data.savings.realization_percentage, 1))}%</dd>
-          <dt>Measurement window</dt><dd>${escapeHtml(formatDate(data.savings.measurement_start))} &rarr; ${escapeHtml(formatDate(data.savings.measurement_end))}</dd>
+          <dt>Measurement window</dt><dd>${escapeHtml(formatDate(data.savings.measurement_start))} to ${escapeHtml(formatDate(data.savings.measurement_end))}</dd>
         </dl>`
       : `<div class="empty">No savings measured yet.</div>`;
 
