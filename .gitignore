@@ -1,5 +1,6 @@
 .agents/
 .claude/
+.github/
 node_modules/
 skills-lock/
 docs/er/
@@ -8,3 +9,5 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .venv/
+todo.md
+skills-lock.json
