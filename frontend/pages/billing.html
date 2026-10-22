@@ -26,15 +26,16 @@
         <div class="section-head" style="margin-bottom:12px">
           <div>
             <h2>Upload a billing batch</h2>
-            <p>Columns: provider_name, external_account_id, external_resource_id, service_name, usage_start_text, usage_end_text, usage_quantity_text, billed_cost_text, currency_code_text.</p>
+            <p>FOCUS 1.4 Cost and Usage CSV. Headers are matched by name, mandatory columns are checked, and account ownership is resolved from BillingAccountId and SubAccountId.</p>
           </div>
         </div>
         <form id="upload-form" class="upload-form" autocomplete="off">
           <label class="sr-only" for="upload-file">Billing CSV file</label>
           <input type="file" id="upload-file" accept=".csv,text/csv" required>
-          <select id="upload-account" aria-label="Cloud account"><option value="">Infer account from first row</option></select>
-          <button class="btn btn-primary" type="submit" id="upload-submit">Upload and validate</button>
+          <button class="btn" type="button" id="preview-upload">Preview</button>
+          <button class="btn btn-primary" type="submit" id="upload-submit">Upload and import</button>
         </form>
+        <div id="upload-preview" style="margin-top:14px"></div>
         <div id="upload-result" style="margin-top:14px"></div>
       </div>
     </div>
@@ -53,9 +54,9 @@
         <table>
           <thead>
             <tr><th>Usage start</th><th>Resource</th><th>Project</th><th>Service</th>
-              <th class="num">Quantity</th><th class="num">Billed cost</th><th>Account</th><th>Batch</th></tr>
+              <th class="num">Quantity</th><th class="num">Billed</th><th class="num">Effective</th><th>Account</th><th>Batch</th></tr>
           </thead>
-          <tbody id="billing-body"><tr><td colspan="8" class="empty">Loading billing records…</td></tr></tbody>
+          <tbody id="billing-body"><tr><td colspan="9" class="empty">Loading billing records…</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -95,14 +96,14 @@
       <div class="card-pad section-head" style="margin-bottom:0">
         <div>
           <h2>Import batches</h2>
-          <p>Accepted and rejected row counts are written by validate_billing_batch.</p>
+          <p>Counts and totals are written by the FOCUS loader. Duplicate rows are skipped by fingerprint.</p>
         </div>
       </div>
       <div class="table-wrap table-wide">
         <table>
           <thead><tr><th>ID</th><th>File</th><th>Account</th><th>Status</th>
             <th class="num">Rows</th><th class="num">Accepted</th><th class="num">Rejected</th>
-            <th>Imported</th><th>Errors</th></tr></thead>
+            <th class="num">Duplicate</th><th>Imported</th><th>Errors</th></tr></thead>
           <tbody id="batches-body"></tbody>
         </table>
       </div>

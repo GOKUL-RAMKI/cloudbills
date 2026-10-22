@@ -170,3 +170,79 @@ AFTER UPDATE OF status ON resources
 FOR EACH ROW
 WHEN (OLD.status IS DISTINCT FROM NEW.status)
 EXECUTE FUNCTION trg_resource_status_history_fn();
+
+
+-- ---------------------------------------------------------------------
+-- 4. FOCUS staging and billing fingerprinting.
+-- ---------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION focus_payload_fingerprint(p_payload JSONB)
+RETURNS CHAR(32)
+LANGUAGE sql
+IMMUTABLE
+AS $$
+    SELECT MD5((COALESCE(p_payload, '{}'::JSONB) - '_extra')::TEXT);
+$$;
+
+CREATE OR REPLACE FUNCTION trg_focus_staging_fingerprint_fn()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    NEW.source_row_fingerprint := focus_payload_fingerprint(NEW.raw_payload);
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_focus_staging_fingerprint ON billing_staging;
+CREATE TRIGGER trg_focus_staging_fingerprint
+BEFORE INSERT OR UPDATE OF raw_payload ON billing_staging
+FOR EACH ROW EXECUTE FUNCTION trg_focus_staging_fingerprint_fn();
+
+CREATE OR REPLACE FUNCTION trg_billing_focus_fingerprint_fn()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF NEW.source_row_fingerprint IS NULL
+       AND NEW.focus_payload IS NOT NULL
+       AND NEW.focus_payload <> '{}'::JSONB THEN
+        NEW.source_row_fingerprint := focus_payload_fingerprint(NEW.focus_payload);
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_billing_focus_fingerprint ON billing_records;
+CREATE TRIGGER trg_billing_focus_fingerprint
+BEFORE INSERT ON billing_records
+FOR EACH ROW EXECUTE FUNCTION trg_billing_focus_fingerprint_fn();
+
+
+-- ---------------------------------------------------------------------
+-- 5. Audit every billing import batch transition.
+-- ---------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION trg_billing_batch_audit_fn()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    INSERT INTO audit_logs (
+        user_id, action_type, entity_type, entity_id,
+        old_state, new_state, action_timestamp
+    ) VALUES (
+        COALESCE(NEW.imported_by, NULLIF(current_setting('app.current_user_id', TRUE), '')::BIGINT),
+        CASE WHEN TG_OP = 'INSERT' THEN 'CREATE_BILLING_IMPORT' ELSE 'UPDATE_BILLING_IMPORT' END,
+        'billing_import_batches',
+        NEW.batch_id,
+        CASE WHEN TG_OP = 'UPDATE' THEN TO_JSONB(OLD) ELSE NULL END,
+        TO_JSONB(NEW),
+        CURRENT_TIMESTAMP
+    );
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_billing_batch_audit ON billing_import_batches;
+CREATE TRIGGER trg_billing_batch_audit
+AFTER INSERT OR UPDATE ON billing_import_batches
+FOR EACH ROW EXECUTE FUNCTION trg_billing_batch_audit_fn();

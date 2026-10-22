@@ -587,25 +587,154 @@ $$;
 -- ---------------------------------------------------------------------
 -- ELT: validate a staging batch, quarantine bad rows, load good ones.
 -- ---------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION validate_billing_batch(p_batch_id BIGINT)
-RETURNS TEXT
+-- ---------------------------------------------------------------------
+-- FOCUS helpers. Account ownership is resolved from the invoice issuer's
+-- billing account and, when present, the cost-owning sub-account.
+-- ---------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION focus_provider_id(p_provider_name TEXT)
+RETURNS INT
+LANGUAGE sql
+STABLE
+AS $$
+    SELECT provider_id
+    FROM cloud_providers
+    WHERE LOWER(BTRIM(provider_name)) = LOWER(BTRIM(p_provider_name))
+    LIMIT 1;
+$$;
+
+CREATE OR REPLACE FUNCTION focus_account_id(
+    p_provider_id INT,
+    p_billing_account_id TEXT,
+    p_sub_account_id TEXT
+)
+RETURNS BIGINT
+LANGUAGE sql
+STABLE
+AS $$
+    SELECT account_id
+    FROM cloud_accounts
+    WHERE provider_id = p_provider_id
+      AND external_account_id = COALESCE(NULLIF(BTRIM(p_sub_account_id), ''),
+                                          NULLIF(BTRIM(p_billing_account_id), ''))
+    LIMIT 1;
+$$;
+
+CREATE OR REPLACE FUNCTION focus_json_object(p_payload JSONB, p_key TEXT)
+RETURNS JSONB
+LANGUAGE plpgsql
+IMMUTABLE
+AS $$
+BEGIN
+    IF p_payload IS NULL OR NOT (p_payload ? p_key) THEN
+        RETURN NULL;
+    END IF;
+    IF NULLIF(BTRIM(p_payload->>p_key), '') IS NULL THEN
+        RETURN NULL;
+    END IF;
+    IF JSONB_TYPEOF(p_payload->p_key) = 'string' THEN
+        RETURN (p_payload->>p_key)::JSONB;
+    END IF;
+    RETURN p_payload->p_key;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION start_focus_batch(
+    p_file_name TEXT,
+    p_file_checksum TEXT,
+    p_row_count INT,
+    p_header_map JSONB,
+    p_imported_by BIGINT
+)
+RETURNS JSONB
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    v_accepted       INT := 0;
-    v_rejected       INT := 0;
-    v_row            RECORD;
-    v_batch_account  BIGINT;
-    v_account_id     BIGINT;
-    v_resource_id    BIGINT;
-    v_project_id     BIGINT;
-    v_start          TIMESTAMPTZ;
-    v_end            TIMESTAMPTZ;
-    v_qty            NUMERIC(18,6);
-    v_cost           NUMERIC(18,6);
-    v_currency       CHAR(3);
+    v_batch_id BIGINT;
 BEGIN
-    SELECT account_id INTO v_batch_account
+    SELECT batch_id INTO v_batch_id
+    FROM billing_import_batches
+    WHERE file_checksum = p_file_checksum;
+
+    IF v_batch_id IS NOT NULL THEN
+        RETURN JSONB_BUILD_OBJECT('duplicate', TRUE, 'batch_id', v_batch_id);
+    END IF;
+
+    INSERT INTO billing_import_batches (
+        imported_by, file_name, file_checksum, row_count, header_map, status
+    ) VALUES (
+        p_imported_by, p_file_name, p_file_checksum, p_row_count,
+        COALESCE(p_header_map, '{}'::JSONB), 'uploaded'
+    )
+    ON CONFLICT (file_checksum) WHERE file_checksum IS NOT NULL DO NOTHING
+    RETURNING batch_id INTO v_batch_id;
+
+    IF v_batch_id IS NULL THEN
+        SELECT batch_id INTO v_batch_id
+        FROM billing_import_batches
+        WHERE file_checksum = p_file_checksum;
+        RETURN JSONB_BUILD_OBJECT('duplicate', TRUE, 'batch_id', v_batch_id);
+    END IF;
+
+    RETURN JSONB_BUILD_OBJECT('duplicate', FALSE, 'batch_id', v_batch_id);
+END;
+$$;
+
+
+-- ---------------------------------------------------------------------
+-- ELT: validate and load a FOCUS staging batch. The explicit cursor gives
+-- the loader one row at a time so a bad row can be quarantined without
+-- aborting the whole batch.
+-- ---------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION load_focus_billing_batch(p_batch_id BIGINT)
+RETURNS JSONB
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    c_rows CURSOR FOR
+        SELECT row_index, raw_payload
+        FROM billing_staging
+        WHERE batch_id = p_batch_id
+        ORDER BY row_index;
+
+    v_row RECORD;
+    v_payload JSONB;
+    v_provider TEXT;
+    v_billing_account TEXT;
+    v_sub_account TEXT;
+    v_currency CHAR(3);
+    v_service_name TEXT;
+    v_service_category TEXT;
+    v_charge_category TEXT;
+    v_charge_class TEXT;
+    v_provider_id INT;
+    v_account_id BIGINT;
+    v_resource_id BIGINT;
+    v_project_id BIGINT;
+    v_charge_start TIMESTAMPTZ;
+    v_charge_end TIMESTAMPTZ;
+    v_billing_start TIMESTAMPTZ;
+    v_billing_end TIMESTAMPTZ;
+    v_pricing_quantity NUMERIC(28,10);
+    v_billed_cost NUMERIC(28,10);
+    v_contracted_cost NUMERIC(28,10);
+    v_effective_cost NUMERIC(28,10);
+    v_list_cost NUMERIC(28,10);
+    v_tags JSONB;
+    v_fingerprint CHAR(32);
+    v_inserted INT;
+    v_accepted INT := 0;
+    v_rejected INT := 0;
+    v_duplicate INT := 0;
+    v_source_total NUMERIC(28,10) := 0;
+    v_accepted_total NUMERIC(28,10) := 0;
+    v_rejected_total NUMERIC(28,10) := 0;
+    v_duplicate_total NUMERIC(28,10) := 0;
+    v_batch_currency CHAR(3);
+    v_currency_count INT;
+    v_unknown_accounts INT;
+    v_pilot_currency CHAR(3);
+BEGIN
+    PERFORM 1
     FROM billing_import_batches
     WHERE batch_id = p_batch_id
     FOR UPDATE;
@@ -614,89 +743,252 @@ BEGIN
         RAISE EXCEPTION 'Billing batch % not found', p_batch_id USING ERRCODE = 'P0002';
     END IF;
 
-    UPDATE billing_import_batches SET status = 'validating' WHERE batch_id = p_batch_id;
+    SELECT COUNT(DISTINCT UPPER(BTRIM(raw_payload->>'BillingCurrency')))
+      INTO v_currency_count
+      FROM billing_staging
+     WHERE batch_id = p_batch_id
+       AND NULLIF(BTRIM(raw_payload->>'BillingCurrency'), '') IS NOT NULL;
 
-    FOR v_row IN
-        SELECT * FROM billing_staging
-        WHERE batch_id = p_batch_id
-        ORDER BY staging_id
+    SELECT UPPER(BTRIM(raw_payload->>'BillingCurrency'))
+      INTO v_batch_currency
+      FROM billing_staging
+     WHERE batch_id = p_batch_id
+       AND NULLIF(BTRIM(raw_payload->>'BillingCurrency'), '') IS NOT NULL
+     LIMIT 1;
+
+    v_pilot_currency := COALESCE(NULLIF(current_setting('app.pilot_currency', TRUE), ''), 'USD');
+
+    IF v_currency_count > 1 THEN
+        UPDATE billing_import_batches SET status = 'failed' WHERE batch_id = p_batch_id;
+        RETURN JSONB_BUILD_OBJECT(
+            'error', 'Mixed BillingCurrency values are not allowed',
+            'code', 'MIXED_CURRENCY'
+        );
+    END IF;
+
+    IF v_batch_currency IS NOT NULL AND v_batch_currency <> v_pilot_currency THEN
+        UPDATE billing_import_batches SET status = 'failed' WHERE batch_id = p_batch_id;
+        RETURN JSONB_BUILD_OBJECT(
+            'error', FORMAT('BillingCurrency %s does not match pilot currency %s',
+                            v_batch_currency, v_pilot_currency),
+            'code', 'CURRENCY_MISMATCH'
+        );
+    END IF;
+
+    SELECT COUNT(*)
+      INTO v_unknown_accounts
+      FROM billing_staging s
+     WHERE s.batch_id = p_batch_id
+       AND NOT (s.raw_payload ? '_parse_error')
+       AND (
+            focus_provider_id(s.raw_payload->>'ServiceProviderName') IS NULL
+            OR focus_account_id(
+                   focus_provider_id(s.raw_payload->>'ServiceProviderName'),
+                   s.raw_payload->>'BillingAccountId',
+                   NULLIF(BTRIM(s.raw_payload->>'SubAccountId'), '')
+               ) IS NULL
+       );
+
+    IF v_unknown_accounts > 0 THEN
+        UPDATE billing_import_batches SET status = 'failed' WHERE batch_id = p_batch_id;
+        RETURN JSONB_BUILD_OBJECT(
+            'error', FORMAT('%s row(s) reference an unknown provider or account', v_unknown_accounts),
+            'code', 'UNKNOWN_ACCOUNT',
+            'rows', v_unknown_accounts
+        );
+    END IF;
+
+    UPDATE billing_import_batches
+       SET status = 'validating',
+           billing_currency = v_batch_currency
+     WHERE batch_id = p_batch_id;
+
+    OPEN c_rows;
+
     LOOP
+        FETCH c_rows INTO v_row;
+        EXIT WHEN NOT FOUND;
+
         BEGIN
-            v_start := v_row.usage_start_text::TIMESTAMPTZ;
-            v_end := v_row.usage_end_text::TIMESTAMPTZ;
-            v_qty := v_row.usage_quantity_text::NUMERIC(18,6);
-            v_cost := v_row.billed_cost_text::NUMERIC(18,6);
+            v_payload := v_row.raw_payload;
+            v_billed_cost := NULL;
 
-            IF v_start IS NULL OR v_end IS NULL THEN
-                RAISE EXCEPTION 'Missing usage interval' USING ERRCODE = '23502';
-            END IF;
-            IF v_end <= v_start THEN
-                RAISE EXCEPTION 'usage_end must be after usage_start' USING ERRCODE = '23514';
-            END IF;
-            IF v_cost < 0 OR v_qty < 0 THEN
-                RAISE EXCEPTION 'Negative cost or quantity' USING ERRCODE = '23514';
-            END IF;
-            IF v_row.service_name IS NULL OR TRIM(v_row.service_name) = '' THEN
-                RAISE EXCEPTION 'Missing service_name' USING ERRCODE = '23502';
+            v_provider := NULLIF(BTRIM(v_payload->>'ServiceProviderName'), '');
+            v_billing_account := NULLIF(BTRIM(v_payload->>'BillingAccountId'), '');
+            v_sub_account := NULLIF(BTRIM(v_payload->>'SubAccountId'), '');
+            v_currency := UPPER(BTRIM(v_payload->>'BillingCurrency'))::CHAR(3);
+            v_service_name := NULLIF(BTRIM(v_payload->>'ServiceName'), '');
+            v_service_category := NULLIF(BTRIM(v_payload->>'ServiceCategory'), '');
+            v_charge_category := NULLIF(BTRIM(v_payload->>'ChargeCategory'), '');
+            v_charge_class := NULLIF(BTRIM(v_payload->>'ChargeClass'), '');
+            v_charge_start := (v_payload->>'ChargePeriodStart')::TIMESTAMPTZ;
+            v_charge_end := (v_payload->>'ChargePeriodEnd')::TIMESTAMPTZ;
+            v_billing_start := (v_payload->>'BillingPeriodStart')::TIMESTAMPTZ;
+            v_billing_end := (v_payload->>'BillingPeriodEnd')::TIMESTAMPTZ;
+            v_pricing_quantity := (v_payload->>'PricingQuantity')::NUMERIC(28,10);
+            v_billed_cost := (v_payload->>'BilledCost')::NUMERIC(28,10);
+            v_contracted_cost := (v_payload->>'ContractedCost')::NUMERIC(28,10);
+            v_effective_cost := (v_payload->>'EffectiveCost')::NUMERIC(28,10);
+            v_list_cost := (v_payload->>'ListCost')::NUMERIC(28,10);
+            v_tags := focus_json_object(v_payload, 'Tags');
+
+            IF v_tags IS NOT NULL AND JSONB_TYPEOF(v_tags) <> 'object' THEN
+                RAISE EXCEPTION 'Tags must be a JSON object' USING ERRCODE = '23514';
             END IF;
 
-            SELECT a.account_id INTO v_account_id
-            FROM cloud_accounts a
-            JOIN cloud_providers cp ON a.provider_id = cp.provider_id
-            WHERE LOWER(cp.provider_name) = LOWER(TRIM(v_row.provider_name))
-              AND a.external_account_id = TRIM(v_row.external_account_id);
+            IF v_currency IS NOT NULL
+               AND LENGTH(UPPER(BTRIM(v_payload->>'BillingCurrency'))) <> 3 THEN
+                RAISE EXCEPTION 'BillingCurrency must be a three-letter code'
+                    USING ERRCODE = '23514';
+            END IF;
 
+            IF v_provider IS NULL
+               OR v_billing_account IS NULL
+               OR NULLIF(BTRIM(v_payload->>'BillingAccountName'), '') IS NULL
+               OR v_currency IS NULL
+               OR v_charge_start IS NULL
+               OR v_charge_end IS NULL
+               OR v_billing_start IS NULL
+               OR v_billing_end IS NULL
+               OR v_service_name IS NULL
+               OR v_service_category IS NULL
+               OR v_charge_category IS NULL
+               OR NULLIF(BTRIM(v_payload->>'ChargeDescription'), '') IS NULL
+               OR NULLIF(BTRIM(v_payload->>'HostProviderName'), '') IS NULL
+               OR NULLIF(BTRIM(v_payload->>'InvoiceIssuerName'), '') IS NULL
+               OR NULLIF(BTRIM(v_payload->>'PricingUnit'), '') IS NULL
+               OR v_pricing_quantity IS NULL
+               OR v_billed_cost IS NULL
+               OR v_contracted_cost IS NULL
+               OR v_effective_cost IS NULL
+               OR v_list_cost IS NULL THEN
+                RAISE EXCEPTION 'Missing mandatory FOCUS value' USING ERRCODE = '23502';
+            END IF;
+
+            IF v_charge_end <= v_charge_start THEN
+                RAISE EXCEPTION 'ChargePeriodEnd must be after ChargePeriodStart'
+                    USING ERRCODE = '23514';
+            END IF;
+
+            IF v_billing_end <= v_billing_start THEN
+                RAISE EXCEPTION 'BillingPeriodEnd must be after BillingPeriodStart'
+                    USING ERRCODE = '23514';
+            END IF;
+
+            IF v_charge_category NOT IN ('Usage','Purchase','Tax','Credit','Adjustment') THEN
+                RAISE EXCEPTION 'Unknown ChargeCategory %', v_charge_category
+                    USING ERRCODE = '23514';
+            END IF;
+
+            v_provider_id := focus_provider_id(v_provider);
+            IF v_provider_id IS NULL THEN
+                RAISE EXCEPTION 'Unknown provider %', v_provider USING ERRCODE = '23503';
+            END IF;
+
+            v_account_id := focus_account_id(v_provider_id, v_billing_account, v_sub_account);
             IF v_account_id IS NULL THEN
-                RAISE EXCEPTION 'Unknown account % for provider %',
-                    v_row.external_account_id, v_row.provider_name USING ERRCODE = '23503';
-            END IF;
-            IF v_account_id <> v_batch_account THEN
-                RAISE EXCEPTION 'Row account % does not match batch account %',
-                    v_account_id, v_batch_account USING ERRCODE = '23503';
+                RAISE EXCEPTION 'Unknown account % / sub-account % for provider %',
+                    v_billing_account, v_sub_account, v_provider USING ERRCODE = '23503';
             END IF;
 
             SELECT resource_id, project_id
               INTO v_resource_id, v_project_id
               FROM resources
              WHERE account_id = v_account_id
-               AND external_resource_id = TRIM(v_row.external_resource_id);
+               AND external_resource_id = NULLIF(BTRIM(v_payload->>'ResourceId'), '');
 
-            v_currency := COALESCE(NULLIF(UPPER(TRIM(v_row.currency_code_text)), ''), 'USD');
+            v_fingerprint := focus_payload_fingerprint(v_payload);
 
             INSERT INTO billing_records (
-                account_id, resource_id, project_id, service_name,
+                account_id, resource_id, project_id, source_batch_id,
+                source_row_index, source_row_fingerprint, service_name,
                 usage_start, usage_end, usage_quantity, billed_cost,
-                currency_code, source_batch_id
+                contracted_cost, effective_cost, list_cost, currency_code,
+                billing_period_start, billing_period_end, charge_category,
+                charge_class, charge_description, service_provider_name,
+                host_provider_name, invoice_issuer_name, invoice_id,
+                invoice_detail_id, billing_account_external_id,
+                sub_account_external_id, tags, focus_payload
             ) VALUES (
-                v_account_id, v_resource_id, v_project_id, TRIM(v_row.service_name),
-                v_start, v_end, v_qty, v_cost,
-                v_currency, p_batch_id
-            );
+                v_account_id, v_resource_id, v_project_id, p_batch_id,
+                v_row.row_index, v_fingerprint, v_service_name,
+                v_charge_start, v_charge_end, v_pricing_quantity, v_billed_cost,
+                v_contracted_cost, v_effective_cost, v_list_cost, v_currency,
+                v_billing_start, v_billing_end, v_charge_category,
+                v_charge_class, NULLIF(BTRIM(v_payload->>'ChargeDescription'), ''),
+                v_provider, NULLIF(BTRIM(v_payload->>'HostProviderName'), ''),
+                NULLIF(BTRIM(v_payload->>'InvoiceIssuerName'), ''),
+                NULLIF(BTRIM(v_payload->>'InvoiceId'), ''),
+                NULLIF(BTRIM(v_payload->>'InvoiceDetailId'), ''),
+                v_billing_account, v_sub_account, v_tags, v_payload
+            )
+            ON CONFLICT (account_id, source_row_fingerprint, usage_start) DO NOTHING;
 
-            v_accepted := v_accepted + 1;
+            GET DIAGNOSTICS v_inserted = ROW_COUNT;
+
+            v_source_total := v_source_total + v_billed_cost;
+            IF v_inserted = 0 THEN
+                v_duplicate := v_duplicate + 1;
+                v_duplicate_total := v_duplicate_total + v_billed_cost;
+            ELSE
+                v_accepted := v_accepted + 1;
+                v_accepted_total := v_accepted_total + v_billed_cost;
+            END IF;
         EXCEPTION WHEN OTHERS THEN
             INSERT INTO billing_import_errors (
                 batch_id, raw_row_index, raw_payload, error_code, error_message
             ) VALUES (
-                p_batch_id, v_row.staging_id, TO_JSONB(v_row), SQLSTATE, SQLERRM
+                p_batch_id, v_row.row_index, v_row.raw_payload, SQLSTATE, SQLERRM
             );
             v_rejected := v_rejected + 1;
+            IF v_billed_cost IS NOT NULL THEN
+                v_rejected_total := v_rejected_total + v_billed_cost;
+                v_source_total := v_source_total + v_billed_cost;
+            END IF;
         END;
     END LOOP;
 
+    CLOSE c_rows;
+
     UPDATE billing_import_batches
-       SET row_count = v_accepted + v_rejected,
+       SET row_count = v_accepted + v_rejected + v_duplicate,
            accepted_count = v_accepted,
            rejected_count = v_rejected,
+           duplicate_count = v_duplicate,
+           source_total = v_source_total,
+           accepted_total = v_accepted_total,
+           rejected_total = v_rejected_total,
+           duplicate_total = v_duplicate_total,
+           billing_currency = v_batch_currency,
            status = CASE
-                        WHEN v_rejected > 0 AND v_accepted = 0 THEN 'failed'
+                        WHEN v_rejected > 0 AND v_accepted = 0 AND v_duplicate = 0 THEN 'failed'
                         ELSE 'processed'
                     END
      WHERE batch_id = p_batch_id;
 
-    DELETE FROM billing_staging WHERE batch_id = p_batch_id;
+    DELETE FROM billing_import_account_summary WHERE batch_id = p_batch_id;
+    INSERT INTO billing_import_account_summary (
+        batch_id, account_id, line_item_count, accepted_total, currency_code
+    )
+    SELECT
+        p_batch_id, br.account_id, COUNT(*), SUM(br.billed_cost), br.currency_code
+    FROM billing_records br
+    WHERE br.source_batch_id = p_batch_id
+    GROUP BY br.account_id, br.currency_code;
 
-    RETURN FORMAT('Batch %s: %s accepted, %s rejected', p_batch_id, v_accepted, v_rejected);
+    RETURN JSONB_BUILD_OBJECT(
+        'batch_id', p_batch_id,
+        'accepted', v_accepted,
+        'rejected', v_rejected,
+        'duplicate', v_duplicate,
+        'source_total', v_source_total,
+        'accepted_total', v_accepted_total,
+        'rejected_total', v_rejected_total,
+        'duplicate_total', v_duplicate_total,
+        'billing_currency', v_batch_currency,
+        'status', CASE WHEN v_rejected > 0 AND v_accepted = 0 AND v_duplicate = 0
+                       THEN 'failed' ELSE 'processed' END
+    );
 END;
 $$;
 

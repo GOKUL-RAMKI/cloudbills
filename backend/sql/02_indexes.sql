@@ -12,6 +12,21 @@ CREATE UNIQUE INDEX uq_budgets_team_month
     ON budgets(team_id, budget_month)
     WHERE project_id IS NULL AND team_id IS NOT NULL;
 
+-- A physical file can only be imported once.
+CREATE UNIQUE INDEX uq_billing_import_checksum
+    ON billing_import_batches(file_checksum)
+    WHERE file_checksum IS NOT NULL;
+
+-- FOCUS line-item idempotency. The partition key is part of the index.
+CREATE UNIQUE INDEX uq_billing_focus_fingerprint
+    ON billing_records(account_id, source_row_fingerprint, usage_start);
+
+CREATE INDEX idx_billing_invoice
+    ON billing_records(invoice_id, invoice_detail_id);
+
+CREATE INDEX idx_billing_charge_category
+    ON billing_records(charge_category, usage_start);
+
 -- Time-series lookups used by idle detection and rollups.
 CREATE INDEX idx_usage_metrics_type_time
     ON usage_metrics(metric_type_id, measured_at);

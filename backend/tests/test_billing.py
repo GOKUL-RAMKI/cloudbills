@@ -18,9 +18,22 @@ def _month_of(value):
 
 def _upload(client, name):
     payload = (SAMPLE_DATA / name).read_bytes()
+    return _upload_payload(client, payload, name)
+
+
+def _upload_payload(client, payload, name="upload.csv"):
     return client.post(
         "/api/batches/upload",
-        data={"file": (io.BytesIO(payload), name), "user_id": "1"},
+        data={"file": (io.BytesIO(payload), name)},
+        content_type="multipart/form-data",
+    )
+
+
+def _preview(client, name):
+    payload = (SAMPLE_DATA / name).read_bytes()
+    return client.post(
+        "/api/batches/preview",
+        data={"file": (io.BytesIO(payload), name)},
         content_type="multipart/form-data",
     )
 
@@ -52,6 +65,19 @@ def test_shared_cost_allocation(client):
     assert all(0 < float(item["allocation_percentage"]) <= 100 for item in payload["items"])
 
 
+def test_preview_clean_batch_maps_and_resolves_accounts(client):
+    response = _preview(client, "billing_upload_clean.csv")
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["row_count"] == 5
+    assert payload["valid_row_count"] == 5
+    assert payload["parse_error_count"] == 0
+    assert payload["mapping"]["BilledCost"] == "BilledCost"
+    assert payload["currencies"] == ["USD"]
+    assert len(payload["accounts"]) == 4
+    assert all(account["resolved"] for account in payload["accounts"])
+
+
 def test_upload_clean_batch(client):
     response = _upload(client, "billing_upload_clean.csv")
     assert response.status_code == 201
@@ -59,7 +85,9 @@ def test_upload_clean_batch(client):
     batch = payload["batch"]
     assert batch["accepted_count"] == 5
     assert batch["rejected_count"] == 0
+    assert batch["duplicate_count"] == 0
     assert batch["status"] == "processed"
+    assert float(batch["accepted_total"]) > 0
     assert payload["errors"] == []
 
     errors = client.get(f"/api/batches/{batch['batch_id']}/errors").get_json()
@@ -73,6 +101,7 @@ def test_upload_mixed_batch_quarantines_bad_rows(client):
     batch = payload["batch"]
     assert batch["accepted_count"] == 1
     assert batch["rejected_count"] == 5
+    assert batch["duplicate_count"] == 0
     assert batch["row_count"] == 6
     assert batch["status"] == "processed"
 
@@ -80,9 +109,34 @@ def test_upload_mixed_batch_quarantines_bad_rows(client):
     assert len(errors) == 5
     codes = {item["error_code"] for item in errors}
     assert "23514" in codes
-    assert "23503" in codes
     assert "23502" in codes
+    assert "22P02" in codes
     assert all(item["error_message"] for item in errors)
+
+
+def test_duplicate_file_is_rejected(client):
+    first = _upload(client, "billing_upload_clean.csv")
+    assert first.status_code == 201
+    batch_id = first.get_json()["batch"]["batch_id"]
+
+    second = _upload(client, "billing_upload_clean.csv")
+    assert second.status_code == 409
+    payload = second.get_json()
+    assert payload["code"] == "DUPLICATE_FILE"
+    assert payload["batch"]["batch_id"] == batch_id
+
+
+def test_unknown_account_fails_batch(client):
+    payload = (SAMPLE_DATA / "billing_upload_clean.csv").read_bytes()
+    response = _upload_payload(
+        client,
+        payload.replace(b"111122223333", b"999999999999", 1),
+        "unknown-account.csv",
+    )
+    assert response.status_code == 422
+    result = response.get_json()
+    assert result["code"] == "UNKNOWN_ACCOUNT"
+    assert result["batch"]["status"] == "failed"
 
 
 def test_upload_requires_file(client):

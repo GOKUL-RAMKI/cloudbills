@@ -1,30 +1,23 @@
-"""Billing facts, CSV ELT ingestion and import-batch endpoints."""
+"""Billing facts, FOCUS CSV ELT ingestion and import-batch endpoints."""
 
 from __future__ import annotations
 
-import csv
 import hashlib
-import io
+import os
 from datetime import date
+from decimal import Decimal, InvalidOperation
 
 from flask import Blueprint, jsonify, request
+from psycopg.types.json import Jsonb
 
 from db import get_conn
+from focus import FocusError, parse_csv
 from routes.utils import actor_id, int_arg
 
 bp = Blueprint("billing", __name__)
 
-STAGING_COLUMNS = (
-    "provider_name",
-    "external_account_id",
-    "external_resource_id",
-    "service_name",
-    "usage_start_text",
-    "usage_end_text",
-    "usage_quantity_text",
-    "billed_cost_text",
-    "currency_code_text",
-)
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+PILOT_CURRENCY = os.getenv("PILOT_CURRENCY", "USD").strip().upper()
 
 
 def _month_bounds(month: str | None):
@@ -37,6 +30,48 @@ def _month_bounds(month: str | None):
         return None, None
     end = date(year + 1, 1, 1) if mon == 12 else date(year, mon + 1, 1)
     return start, end
+
+
+def _read_upload(upload) -> bytes:
+    raw = upload.read(MAX_UPLOAD_BYTES + 1)
+    if len(raw) > MAX_UPLOAD_BYTES:
+        raise FocusError("FILE_TOO_LARGE", "CSV file is larger than 10 MB")
+    return raw
+
+
+def _error_response(exc: FocusError):
+    return jsonify(error=exc.message, code=exc.code, **exc.details), 400
+
+
+def _batch_summary(conn, batch_id: int):
+    return conn.execute(
+        """
+        SELECT b.*,
+               a.account_name,
+               cp.provider_name,
+               u.username AS imported_by_name,
+               (SELECT COUNT(*) FROM billing_import_errors e
+                 WHERE e.batch_id = b.batch_id) AS error_count
+        FROM billing_import_batches b
+        LEFT JOIN cloud_accounts a ON b.account_id = a.account_id
+        LEFT JOIN cloud_providers cp ON a.provider_id = cp.provider_id
+        LEFT JOIN users u ON b.imported_by = u.user_id
+        WHERE b.batch_id = %s
+        """,
+        (batch_id,),
+    ).fetchone()
+
+
+def _batch_errors(conn, batch_id: int):
+    return conn.execute(
+        """
+        SELECT error_id, raw_row_index, error_code, error_message
+        FROM billing_import_errors
+        WHERE batch_id = %s
+        ORDER BY error_id
+        """,
+        (batch_id,),
+    ).fetchall()
 
 
 @bp.get("/billing")
@@ -74,7 +109,9 @@ def list_billing():
         items = conn.execute(
             f"""
             SELECT b.billing_id, b.usage_start, b.usage_end, b.service_name,
-                   b.usage_quantity, b.billed_cost, b.currency_code,
+                   b.usage_quantity, b.billed_cost, b.effective_cost,
+                   b.charge_category, b.currency_code,
+                   b.billing_period_start, b.billing_period_end,
                    b.account_id, a.account_name, cp.provider_name,
                    b.resource_id, r.resource_name,
                    b.project_id, p.project_name,
@@ -136,113 +173,188 @@ def shared_allocation():
     return jsonify(items=rows)
 
 
+@bp.post("/batches/preview")
+def preview_batch():
+    upload = request.files.get("file")
+    if not upload or not upload.filename:
+        return jsonify(error="A CSV file is required"), 400
+
+    try:
+        focus_file = parse_csv(_read_upload(upload))
+    except FocusError as exc:
+        return _error_response(exc)
+
+    total = Decimal("0")
+    for row in focus_file.valid_rows:
+        value = row.values.get("BilledCost")
+        if value in (None, ""):
+            continue
+        try:
+            total += Decimal(str(value))
+        except InvalidOperation:
+            pass
+
+    account_keys: list[tuple[str, str, str]] = []
+    for row in focus_file.valid_rows:
+        key = (
+            str(row.values.get("ServiceProviderName") or ""),
+            str(row.values.get("BillingAccountId") or ""),
+            str(row.values.get("SubAccountId") or ""),
+        )
+        if key not in account_keys:
+            account_keys.append(key)
+
+    accounts = []
+    with get_conn() as conn:
+        for provider, billing_account, sub_account in account_keys:
+            resolved = conn.execute(
+                """
+                SELECT focus_provider_id(%s) AS provider_id,
+                       focus_account_id(focus_provider_id(%s), %s, NULLIF(%s, '')) AS account_id
+                """,
+                (provider, provider, billing_account, sub_account),
+            ).fetchone()
+            accounts.append(
+                {
+                    "provider": provider,
+                    "billing_account_id": billing_account,
+                    "sub_account_id": sub_account or None,
+                    "provider_id": resolved["provider_id"],
+                    "account_id": resolved["account_id"],
+                    "resolved": resolved["account_id"] is not None,
+                }
+            )
+
+    currencies = sorted(
+        {
+            str(row.values.get("BillingCurrency") or "").upper()
+            for row in focus_file.valid_rows
+            if row.values.get("BillingCurrency")
+        }
+    )
+    warnings = []
+    if focus_file.unknown_columns:
+        warnings.append(
+            "Unknown columns will be preserved in focus_payload.extra: "
+            + ", ".join(focus_file.unknown_columns)
+        )
+    if currencies and currencies != [PILOT_CURRENCY]:
+        warnings.append(
+            f"File currencies {', '.join(currencies)} do not match pilot currency {PILOT_CURRENCY}"
+        )
+    unresolved = [account for account in accounts if not account["resolved"]]
+    if unresolved:
+        warnings.append(f"{len(unresolved)} provider/account combination(s) are not registered")
+
+    return jsonify(
+        file_name=upload.filename,
+        row_count=len(focus_file.rows),
+        valid_row_count=sum(1 for _ in focus_file.valid_rows),
+        parse_error_count=sum(1 for row in focus_file.rows if row.error),
+        headers=focus_file.raw_headers,
+        mapping=focus_file.mapping,
+        unknown_columns=focus_file.unknown_columns,
+        sample_rows=[
+            {
+                "row_index": row.index,
+                "error": row.error,
+                "values": row.values,
+            }
+            for row in focus_file.rows[:10]
+        ],
+        accounts=accounts,
+        currencies=currencies,
+        total_billed_cost=str(total),
+        pilot_currency=PILOT_CURRENCY,
+        warnings=warnings,
+    )
+
+
 @bp.post("/batches/upload")
 def upload_batch():
     upload = request.files.get("file")
     if not upload or not upload.filename:
         return jsonify(error="A CSV file is required"), 400
 
-    raw = upload.read()
-    if len(raw) > 10 * 1024 * 1024:
-        return jsonify(error="CSV file is larger than 10 MB"), 400
-
     try:
-        text = raw.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        return jsonify(error="CSV must be UTF-8 encoded"), 400
+        raw = _read_upload(upload)
+        focus_file = parse_csv(raw)
+    except FocusError as exc:
+        return _error_response(exc)
 
-    reader = csv.reader(io.StringIO(text))
-    rows = [row for row in reader if any(cell.strip() for cell in row)]
-    if rows and rows[0] and rows[0][0].strip().lower() in ("provider_name", "provider"):
-        rows = rows[1:]
-    if not rows:
-        return jsonify(error="CSV contains no data rows"), 400
-
-    normalized: list[list[str]] = []
-    for row in rows:
-        padded = (row + [""] * len(STAGING_COLUMNS))[: len(STAGING_COLUMNS)]
-        normalized.append([cell.strip() for cell in padded])
-
-    user_id = actor_id(
-        {"user_id": request.form.get("user_id") or 1},
-        key="user_id",
-    )
+    checksum = hashlib.sha256(raw).hexdigest()
+    header_map = {
+        header: focus_file.mapping[header] for header in focus_file.raw_headers
+    }
+    actor = actor_id({})
 
     with get_conn() as conn:
-        account_id = request.form.get("account_id")
-        if account_id in (None, ""):
-            first = normalized[0]
-            account = conn.execute(
-                """
-                SELECT a.account_id
-                FROM cloud_accounts a
-                JOIN cloud_providers p ON a.provider_id = p.provider_id
-                WHERE LOWER(p.provider_name) = LOWER(%s)
-                  AND a.external_account_id = %s
-                """,
-                (first[0], first[1]),
-            ).fetchone()
-            if not account:
-                return jsonify(
-                    error="Could not infer cloud account; provide account_id or use a valid provider/account row"
-                ), 400
-            account_id = account["account_id"]
-        else:
-            try:
-                account_id = int(account_id)
-            except ValueError:
-                return jsonify(error="account_id must be an integer"), 400
-
-        checksum = hashlib.sha256(raw).hexdigest()
-        batch = conn.execute(
+        conn.execute(
+            "SELECT set_config('app.pilot_currency', %s, true)",
+            (PILOT_CURRENCY,),
+        )
+        started = conn.execute(
             """
-            INSERT INTO billing_import_batches
-                (account_id, imported_by, file_name, file_checksum, row_count, status)
-            VALUES (%s, %s, %s, %s, %s, 'uploaded')
-            RETURNING batch_id
+            SELECT start_focus_batch(%s, %s, %s, %s, %s) AS result
             """,
-            (account_id, user_id, upload.filename, checksum, len(normalized)),
-        ).fetchone()
-        batch_id = batch["batch_id"]
+            (
+                upload.filename,
+                checksum,
+                len(focus_file.rows),
+                Jsonb(header_map),
+                actor,
+            ),
+        ).fetchone()["result"]
+
+        batch_id = started["batch_id"]
+        if started["duplicate"]:
+            return (
+                jsonify(
+                    error="This file has already been imported",
+                    code="DUPLICATE_FILE",
+                    batch=_batch_summary(conn, batch_id),
+                    errors=_batch_errors(conn, batch_id),
+                ),
+                409,
+            )
 
         with conn.cursor() as cur:
             with cur.copy(
                 """
-                COPY billing_staging (
-                    batch_id, provider_name, external_account_id, external_resource_id,
-                    service_name, usage_start_text, usage_end_text,
-                    usage_quantity_text, billed_cost_text, currency_code_text
-                ) FROM STDIN
+                COPY billing_staging (batch_id, row_index, raw_payload)
+                FROM STDIN
                 """
             ) as copy:
-                for row in normalized:
-                    copy.write_row([batch_id, *row])
+                for row in focus_file.rows:
+                    copy.write_row([batch_id, row.index, Jsonb(row.values)])
 
         result = conn.execute(
-            "SELECT validate_billing_batch(%s) AS message", (batch_id,)
-        ).fetchone()
-        conn.execute("CALL refresh_materialized_views()")
-        summary = conn.execute(
-            """
-            SELECT b.*, a.account_name, cp.provider_name
-            FROM billing_import_batches b
-            JOIN cloud_accounts a ON b.account_id = a.account_id
-            JOIN cloud_providers cp ON a.provider_id = cp.provider_id
-            WHERE b.batch_id = %s
-            """,
-            (batch_id,),
-        ).fetchone()
-        errors = conn.execute(
-            """
-            SELECT error_id, raw_row_index, error_code, error_message
-            FROM billing_import_errors
-            WHERE batch_id = %s
-            ORDER BY error_id
-            """,
-            (batch_id,),
-        ).fetchall()
+            "SELECT load_focus_billing_batch(%s) AS result", (batch_id,)
+        ).fetchone()["result"]
+        summary = _batch_summary(conn, batch_id)
+        errors = _batch_errors(conn, batch_id)
 
-    return jsonify(message=result["message"], batch=summary, errors=errors), 201
+        if result.get("error"):
+            return (
+                jsonify(
+                    error=result["error"],
+                    code=result.get("code"),
+                    batch=summary,
+                    errors=errors,
+                ),
+                422,
+            )
+
+        conn.execute("CALL refresh_materialized_views()")
+
+    message = (
+        f"Batch {batch_id}: {result['accepted']} accepted, "
+        f"{result['rejected']} rejected, {result['duplicate']} duplicate"
+    )
+    return (
+        jsonify(message=message, result=result, batch=summary, errors=errors),
+        201,
+    )
 
 
 @bp.get("/batches")
@@ -251,11 +363,15 @@ def list_batches():
     with get_conn() as conn:
         rows = conn.execute(
             """
-            SELECT b.*, a.account_name, cp.provider_name, u.username AS imported_by_name,
-                   (SELECT COUNT(*) FROM billing_import_errors e WHERE e.batch_id = b.batch_id) AS error_count
+            SELECT b.*,
+                   COALESCE(a.account_name, 'Multiple accounts') AS account_name,
+                   COALESCE(cp.provider_name, 'Multiple providers') AS provider_name,
+                   u.username AS imported_by_name,
+                   (SELECT COUNT(*) FROM billing_import_errors e
+                     WHERE e.batch_id = b.batch_id) AS error_count
             FROM billing_import_batches b
-            JOIN cloud_accounts a ON b.account_id = a.account_id
-            JOIN cloud_providers cp ON a.provider_id = cp.provider_id
+            LEFT JOIN cloud_accounts a ON b.account_id = a.account_id
+            LEFT JOIN cloud_providers cp ON a.provider_id = cp.provider_id
             LEFT JOIN users u ON b.imported_by = u.user_id
             ORDER BY b.imported_at DESC
             LIMIT %s

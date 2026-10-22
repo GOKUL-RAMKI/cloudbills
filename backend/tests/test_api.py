@@ -34,7 +34,7 @@ def test_health_reports_database(client):
 
 def test_schema_statistics(client):
     payload = client.get("/api/stats").get_json()
-    assert payload["base_tables"] == 33
+    assert payload["base_tables"] == 34
     assert payload["partitions"] == 10
     assert payload["materialized_views"] == 1
     assert payload["triggers"] >= 8

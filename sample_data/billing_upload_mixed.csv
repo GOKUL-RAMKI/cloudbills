@@ -1,7 +1,7 @@
-provider_name,external_account_id,external_resource_id,service_name,usage_start_text,usage_end_text,usage_quantity_text,billed_cost_text,currency_code_text
-AWS,111122223333,i-0a1b2c3d4e5f60002,Amazon EC2,2026-10-19T00:00:00Z,2026-10-20T00:00:00Z,24,46.80,USD
-AWS,111122223333,i-0a1b2c3d4e5f60004,Amazon EC2,2026-10-19T00:00:00Z,2026-10-20T00:00:00Z,24,-15.00,USD
-AWS,111122223333,vol-0a1b2c3d4e5f60001,Amazon EBS,2026-10-20T00:00:00Z,2026-10-19T00:00:00Z,500,4.60,USD
-AWS,111122223333,db-prod-0001,,2026-10-19T00:00:00Z,2026-10-20T00:00:00Z,24,41.20,USD
-AWS,999999999999,i-0a1b2c3d4e5f60001,Amazon EC2,2026-10-19T00:00:00Z,2026-10-20T00:00:00Z,24,50.00,USD
-GCP,gcp-shared-01,gce-analytics-01,Compute Engine,2026-10-19T00:00:00Z,2026-10-20T00:00:00Z,24,33.10,USD
+BilledCost,BillingAccountId,BillingAccountName,BillingCurrency,BillingPeriodEnd,BillingPeriodStart,ChargeCategory,ChargeClass,ChargeDescription,ChargePeriodEnd,ChargePeriodStart,ContractedCost,EffectiveCost,HostProviderName,InvoiceIssuerName,ListCost,PricingQuantity,PricingUnit,ServiceCategory,ServiceName,ServiceProviderName,SubAccountId,ResourceId,ResourceName,RegionId,InvoiceId,InvoiceDetailId,ChargeFrequency,ConsumedQuantity,ConsumedUnit,Tags
+140.16,111122223333,AWS Infrastructure Prod,USD,2026-10-01T00:00:00Z,2026-09-01T00:00:00Z,Usage,,Web frontend compute,2026-10-01T00:00:00Z,2026-09-01T00:00:00Z,140.16,140.16,AWS,AWS,140.16,730,Hrs,Compute,Amazon EC2,AWS,,i-0a1b2c3d4e5f60001,web-prod-01,us-east-1,INV-2026-09,LINE-101,Usage-Based,730,Hrs,"{""owner"":""web-team""}"
+10.00,111122223333,AWS Infrastructure Prod,USD,2026-10-01T00:00:00Z,2026-09-01T00:00:00Z,Usage,,Missing service name,2026-10-01T00:00:00Z,2026-09-01T00:00:00Z,10.00,10.00,AWS,AWS,10.00,10,Hrs,Compute,,AWS,,i-0a1b2c3d4e5f60001,web-prod-01,us-east-1,INV-2026-09,LINE-102,Usage-Based,10,Hrs,"{}"
+10.00,111122223333,AWS Infrastructure Prod,USD,2026-10-01T00:00:00Z,2026-09-01T00:00:00Z,Mystery,,Unknown charge category,2026-10-01T00:00:00Z,2026-09-01T00:00:00Z,10.00,10.00,AWS,AWS,10.00,10,Hrs,Compute,Amazon EC2,AWS,,i-0a1b2c3d4e5f60001,web-prod-01,us-east-1,INV-2026-09,LINE-103,Usage-Based,10,Hrs,"{}"
+10.00,111122223333,AWS Infrastructure Prod,USD,2026-10-01T00:00:00Z,2026-09-01T00:00:00Z,Usage,,Reversed period,2026-08-01T00:00:00Z,2026-09-01T00:00:00Z,10.00,10.00,AWS,AWS,10.00,10,Hrs,Compute,Amazon EC2,AWS,,i-0a1b2c3d4e5f60001,web-prod-01,us-east-1,INV-2026-09,LINE-104,Usage-Based,10,Hrs,"{}"
+not-a-number,111122223333,AWS Infrastructure Prod,USD,2026-10-01T00:00:00Z,2026-09-01T00:00:00Z,Usage,,Invalid cost,2026-10-01T00:00:00Z,2026-09-01T00:00:00Z,10.00,10.00,AWS,AWS,10.00,10,Hrs,Compute,Amazon EC2,AWS,,i-0a1b2c3d4e5f60001,web-prod-01,us-east-1,INV-2026-09,LINE-105,Usage-Based,10,Hrs,"{}"
+10.00,111122223333,AWS Infrastructure Prod,USD

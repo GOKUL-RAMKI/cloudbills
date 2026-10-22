@@ -161,32 +161,43 @@ CREATE TABLE metric_types (
 );
 
 CREATE TABLE billing_import_batches (
-    batch_id        BIGSERIAL PRIMARY KEY,
-    account_id      BIGINT NOT NULL REFERENCES cloud_accounts(account_id) ON DELETE RESTRICT,
-    imported_by     BIGINT REFERENCES users(user_id) ON DELETE SET NULL,
-    file_name       TEXT NOT NULL,
-    file_checksum   CHAR(64),
-    imported_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    row_count       INT NOT NULL DEFAULT 0 CHECK (row_count >= 0),
-    accepted_count  INT NOT NULL DEFAULT 0,
-    rejected_count  INT NOT NULL DEFAULT 0,
-    status          VARCHAR(20) NOT NULL DEFAULT 'uploaded'
-                    CHECK (status IN ('uploaded','validating','validated','processed','failed'))
+    batch_id          BIGSERIAL PRIMARY KEY,
+    account_id        BIGINT REFERENCES cloud_accounts(account_id) ON DELETE RESTRICT,
+    imported_by       BIGINT REFERENCES users(user_id) ON DELETE SET NULL,
+    file_name         TEXT NOT NULL,
+    file_checksum     CHAR(64),
+    imported_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    row_count         INT NOT NULL DEFAULT 0 CHECK (row_count >= 0),
+    accepted_count    INT NOT NULL DEFAULT 0 CHECK (accepted_count >= 0),
+    rejected_count    INT NOT NULL DEFAULT 0 CHECK (rejected_count >= 0),
+    duplicate_count   INT NOT NULL DEFAULT 0 CHECK (duplicate_count >= 0),
+    source_total      NUMERIC(28,10) NOT NULL DEFAULT 0,
+    accepted_total    NUMERIC(28,10) NOT NULL DEFAULT 0,
+    rejected_total    NUMERIC(28,10) NOT NULL DEFAULT 0,
+    duplicate_total   NUMERIC(28,10) NOT NULL DEFAULT 0,
+    billing_currency  CHAR(3),
+    header_map        JSONB NOT NULL DEFAULT '{}'::JSONB,
+    status            VARCHAR(20) NOT NULL DEFAULT 'uploaded'
+                      CHECK (status IN ('uploaded','validating','validated','processed','failed'))
 );
 
--- Untyped ELT landing zone: every column is raw TEXT
+-- ELT landing zone: the CSV row is preserved as FOCUS-keyed JSON.
 CREATE TABLE billing_staging (
-    staging_id           BIGSERIAL PRIMARY KEY,
-    batch_id             BIGINT NOT NULL REFERENCES billing_import_batches(batch_id) ON DELETE CASCADE,
-    provider_name        TEXT,
-    external_account_id  TEXT,
-    external_resource_id TEXT,
-    service_name         TEXT,
-    usage_start_text     TEXT,
-    usage_end_text       TEXT,
-    usage_quantity_text  TEXT,
-    billed_cost_text     TEXT,
-    currency_code_text   TEXT
+    staging_id              BIGSERIAL PRIMARY KEY,
+    batch_id                BIGINT NOT NULL REFERENCES billing_import_batches(batch_id) ON DELETE CASCADE,
+    row_index               INT NOT NULL CHECK (row_index >= 1),
+    raw_payload             JSONB NOT NULL,
+    source_row_fingerprint  CHAR(32),
+    UNIQUE (batch_id, row_index)
+);
+
+CREATE TABLE billing_import_account_summary (
+    batch_id        BIGINT NOT NULL REFERENCES billing_import_batches(batch_id) ON DELETE CASCADE,
+    account_id      BIGINT NOT NULL REFERENCES cloud_accounts(account_id) ON DELETE RESTRICT,
+    line_item_count INT NOT NULL DEFAULT 0 CHECK (line_item_count >= 0),
+    accepted_total  NUMERIC(28,10) NOT NULL DEFAULT 0,
+    currency_code   CHAR(3),
+    PRIMARY KEY (batch_id, account_id)
 );
 
 -- Quarantine table for rows that fail validation
@@ -202,19 +213,40 @@ CREATE TABLE billing_import_errors (
 
 -- Range-partitioned fact table. The primary key includes the partition key.
 CREATE TABLE billing_records (
-    billing_id      BIGINT GENERATED ALWAYS AS IDENTITY,
-    usage_start     TIMESTAMPTZ NOT NULL,
-    account_id      BIGINT NOT NULL REFERENCES cloud_accounts(account_id) ON DELETE RESTRICT,
-    resource_id     BIGINT REFERENCES resources(resource_id) ON DELETE SET NULL,
-    project_id      BIGINT REFERENCES projects(project_id) ON DELETE SET NULL,
-    source_batch_id BIGINT NOT NULL REFERENCES billing_import_batches(batch_id) ON DELETE RESTRICT,
-    service_name    VARCHAR(100) NOT NULL,
-    usage_end       TIMESTAMPTZ NOT NULL,
-    usage_quantity  NUMERIC(18,6) NOT NULL CHECK (usage_quantity >= 0),
-    billed_cost     NUMERIC(18,6) NOT NULL CHECK (billed_cost >= 0),
-    currency_code   CHAR(3) NOT NULL,
+    billing_id                BIGINT GENERATED ALWAYS AS IDENTITY,
+    usage_start               TIMESTAMPTZ NOT NULL,
+    account_id                BIGINT NOT NULL REFERENCES cloud_accounts(account_id) ON DELETE RESTRICT,
+    resource_id               BIGINT REFERENCES resources(resource_id) ON DELETE SET NULL,
+    project_id                BIGINT REFERENCES projects(project_id) ON DELETE SET NULL,
+    source_batch_id           BIGINT NOT NULL REFERENCES billing_import_batches(batch_id) ON DELETE RESTRICT,
+    source_row_index          INT,
+    source_row_fingerprint    CHAR(32),
+    service_name              VARCHAR(200) NOT NULL,
+    usage_end                 TIMESTAMPTZ NOT NULL,
+    usage_quantity            NUMERIC(28,10) NOT NULL,
+    billed_cost               NUMERIC(28,10) NOT NULL,
+    contracted_cost           NUMERIC(28,10),
+    effective_cost            NUMERIC(28,10),
+    list_cost                 NUMERIC(28,10),
+    currency_code             CHAR(3) NOT NULL,
+    billing_period_start      TIMESTAMPTZ,
+    billing_period_end        TIMESTAMPTZ,
+    charge_category           VARCHAR(40),
+    charge_class              VARCHAR(40),
+    charge_description        TEXT,
+    service_provider_name     TEXT,
+    host_provider_name        TEXT,
+    invoice_issuer_name       TEXT,
+    invoice_id                TEXT,
+    invoice_detail_id         TEXT,
+    billing_account_external_id TEXT,
+    sub_account_external_id   TEXT,
+    tags                      JSONB,
+    focus_payload             JSONB NOT NULL DEFAULT '{}'::JSONB,
     PRIMARY KEY (billing_id, usage_start),
-    CHECK (usage_end > usage_start)
+    CHECK (usage_end > usage_start),
+    CHECK (billing_period_start IS NULL OR billing_period_end IS NULL
+           OR billing_period_end > billing_period_start)
 ) PARTITION BY RANGE (usage_start);
 
 -- Monthly sub-partitions for the billing horizon (2026-09 .. 2026-12)
